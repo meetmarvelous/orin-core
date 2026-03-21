@@ -1,8 +1,8 @@
 # ORIN Core 🛰️
 
-> **The Ambient AI Identity Layer for the Solana Network State.**
+> **Every space knows your song.**
 
-ORIN is a revolutionary DePIN protocol that recognizes users across physical spaces—hotels, homes, and cars—and automatically synchronizes their environment to their saved preferences via Solana-based identities.
+ORIN is a revolutionary DePIN protocol that recognizes users across physical spaces hotels, homes, and cars and automatically synchronizes their environment to their saved preferences via Solana based identities.
 
 ---
 
