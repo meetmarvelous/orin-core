@@ -16,6 +16,7 @@ import {
   SavePreferencesResult,
 } from "@/lib/savePreferences";
 import type { GuestContext } from "@/lib/api";
+import idl from "@idl/orin_identity.json";
 
 type LightingMode = "warm" | "cold" | "ambient";
 type RoomMode = "relax" | "focus" | "sleep";
@@ -58,12 +59,9 @@ export default function RoomControl() {
     setSaveError(null);
     setSaveResult(null);
     try {
-      const idlRes = await fetch("/orin_identity.json");
-      if (!idlRes.ok) throw new Error("IDL not found. Copy target/idl/orin_identity.json to frontend/public/");
-      const idl = (await idlRes.json()) as Idl;
       const connection = getConnection();
       const provider = new AnchorProvider(connection, anchorWallet, { commitment: "confirmed" });
-      const program = new Program(idl, provider);
+      const program = new Program(idl as Idl, provider);
       const { pda } = deriveGuestPda(guestEmail);
       const preferences: RoomPreferences = {
         temp: temperature,
