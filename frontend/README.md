@@ -72,3 +72,11 @@ npm run build
 ## Deployment
 
 Compatible with Vercel, Netlify, or any Node.js hosting. Set the root directory to `frontend/` in your deployment config.
+
+## .env.local.example
+# 1. Point to the Solana node on your local machine where the protocol was just successfully implemented (if left blank, the frontend will connect to Devnet by default).
+# NEXT_PUBLIC_RPC_ENDPOINT=http://127.0.0.1:8899
+
+# 2. Point to the main API gateway (port 3001) that you just started running on your local machine.
+NEXT_PUBLIC_API_URL=http://127.0.0.1:3001
+NEXT_PUBLIC_API_KEY=orin_secret_key_2026_dev

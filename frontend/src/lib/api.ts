@@ -31,6 +31,8 @@ export interface VoiceCommandResponse {
  */
 const API_BASE =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+const API_KEY =
+  process.env.NEXT_PUBLIC_API_KEY || "orin_secret_key_2026_dev";
 
 /**
  * Step A: Sends the raw voice command / preferences to the backend.
@@ -48,6 +50,7 @@ export async function stageVoiceCommand(
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      "X-API-KEY": API_KEY,
     },
     body: JSON.stringify(payload),
   });

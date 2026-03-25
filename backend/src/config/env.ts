@@ -1,4 +1,4 @@
-﻿import { config as loadDotenv } from "dotenv";
+import { config as loadDotenv } from "dotenv";
 import { z } from "zod";
 
 loadDotenv();
@@ -19,6 +19,8 @@ const envSchema = z.object({
   STATE_PROVIDER: z.enum(["redis", "memory"]).default("redis"),
   API_HOST: z.string().min(1).default("0.0.0.0"),
   API_PORT: z.coerce.number().int().positive().default(3001),
+  ALLOWED_ORIGIN: z.string().min(1).default("http://localhost:3000"),
+  API_KEY: z.string().min(1).default("replace_with_a_secure_api_key"),
 });
 
 type ParsedEnv = z.infer<typeof envSchema>;

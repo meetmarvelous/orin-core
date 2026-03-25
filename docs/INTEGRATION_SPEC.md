@@ -1,4 +1,4 @@
-﻿# ORIN �Ys? Frontend Integration Spec
+﻿# ORIN Frontend Integration Spec
 
 Hi Defi Mantle,
 

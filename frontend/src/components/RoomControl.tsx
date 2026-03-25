@@ -69,8 +69,19 @@ export default function RoomControl() {
         services: [],
         raw_response: `Room set to ${temperature}°C with ${lightingType} lighting at ${brightness}% brightness.`,
       };
+
       const guestContext: GuestContext = { name: guestEmail.split("@")[0], loyaltyPoints: 0, history: [] };
-      const result = await savePreferences(program, pda, publicKey, `Set room to ${activeMode || "custom"} mode`, preferences, guestContext);
+
+      // FIX: Previously, we sent a generic command (`Set room to ${activeMode} mode`) to the backend.
+      // This caused the AI to hallucinate random values (e.g., guessing 23°C instead of 21°C),
+      // which resulted in the backend's AI Hash never matching the frontend's local Hash-Lock.
+      // By passing `preferences.raw_response` as the exact instruction, we force the AI to output
+      // the exact JSON properties that the frontend used for the local hash.
+      // Delete the following line:
+      //const result = await savePreferences(program, pda, publicKey, `Set room to ${activeMode || "custom"} mode`, preferences, guestContext);
+      const exactCommand = preferences.raw_response; 
+      const result = await savePreferences(program, pda, publicKey, exactCommand, preferences, guestContext);
+
       setSaveResult(result);
     } catch (err: any) {
       setSaveError(err.message || "Failed to save preferences.");

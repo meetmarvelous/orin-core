@@ -1,4 +1,5 @@
 import Fastify from "fastify";
+import cors from "@fastify/cors";
 import { validateEnvOrExit } from "../config/validate_env";
 import { getEnv } from "../config/env";
 import { stateProvider } from "../state";
@@ -23,9 +24,20 @@ type VoiceCommandBody = {
 };
 
 const app = Fastify({ logger: false });
+app.register(cors, {
+  origin: env.ALLOWED_ORIGIN,
+});
 
 app.post<{ Body: VoiceCommandBody }>("/api/v1/voice-command", async (request, reply) => {
   const reqLogger = createRequestLogger(request.headers["x-request-id"] as string | undefined);
+
+  // Production Auth Check
+  const apiKey = request.headers["x-api-key"];
+  if (apiKey !== env.API_KEY) {
+    reqLogger.warn({ origin: request.headers.origin }, "unauthorized_api_access");
+    return reply.status(401).send({ error: "Unauthorized. Valid X-API-KEY required." });
+  }
+
   const { guestPda, userInput, guestContext } = request.body ?? ({} as VoiceCommandBody);
 
   if (!guestPda || !userInput || !guestContext) {
