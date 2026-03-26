@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useWallet, useAnchorWallet } from "@solana/wallet-adapter-react";
 import { Program, AnchorProvider, Idl } from "@coral-xyz/anchor";
 import { deriveGuestPda } from "@/lib/pda";
-import { getConnection, fetchGuestProfile } from "@/lib/solana";
+import { getConnection, fetchGuestProfile, initializeGuestOnChain } from "@/lib/solana";
 import idl from "@idl/orin_identity.json";
 
 interface GuestDashboardProps {
@@ -21,6 +21,8 @@ export default function GuestDashboard({ onEnterRoom }: GuestDashboardProps) {
   const [guestEmail, setGuestEmail] = useState("");
   const [profileData, setProfileData] = useState<any | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [profileNotFound, setProfileNotFound] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -40,9 +42,15 @@ export default function GuestDashboard({ onEnterRoom }: GuestDashboardProps) {
         const { pda } = deriveGuestPda(guestEmail);
         
         const data = await fetchGuestProfile(program, pda);
+        if (data === null) {
+          setProfileNotFound(true);
+        } else {
+          setProfileNotFound(false);
+        }
         setProfileData(data);
       } catch (err: any) {
         setProfileData(null);
+        setProfileNotFound(true);
       } finally {
         setIsLoading(false);
       }
@@ -54,6 +62,34 @@ export default function GuestDashboard({ onEnterRoom }: GuestDashboardProps) {
       return () => clearTimeout(timeoutId);
     }
   }, [publicKey?.toBase58(), connected, guestEmail]);
+
+  const handleInitialize = async () => {
+    if (!anchorWallet || !publicKey || !guestEmail) return;
+    setIsInitializing(true);
+    setError(null);
+    try {
+      const connection = getConnection();
+      const provider = new AnchorProvider(connection, anchorWallet, { commitment: "confirmed" });
+      const program = new Program(idl as Idl, provider);
+      const { pda, emailHash } = deriveGuestPda(guestEmail);
+      
+      await initializeGuestOnChain(
+        program,
+        pda,
+        publicKey,
+        emailHash,
+        guestEmail.split("@")[0]
+      );
+      
+      const data = await fetchGuestProfile(program, pda);
+      setProfileData(data);
+      setProfileNotFound(false);
+    } catch (err: any) {
+      setError(err.message || "Failed to initialize guest profile.");
+    } finally {
+      setIsInitializing(false);
+    }
+  };
 
   if (!connected) {
     return (
@@ -74,17 +110,37 @@ export default function GuestDashboard({ onEnterRoom }: GuestDashboardProps) {
   return (
     <div style={{ width: "100%", maxWidth: 800, margin: "0 auto" }}>
       {/* ── Email Identity Check ───────────────── */}
-      {!profileData && (
+      {!profileData && !profileNotFound && (
         <div className="orin-card fade-up" style={{ marginBottom: 40 }}>
           <div className="section-label" style={{ marginBottom: 16 }}>Locate Identity</div>
           <input
             type="email"
             className="orin-input"
             value={guestEmail}
-            onChange={(e) => setGuestEmail(e.target.value)}
+            onChange={(e) => {
+              setGuestEmail(e.target.value);
+              setProfileNotFound(false);
+            }}
             placeholder="Enter registered email (e.g., shalom@orin.network)"
           />
           {isLoading && <p className="hint-text" style={{ textAlign: "left" }}>Searching blockchain...</p>}
+        </div>
+      )}
+
+      {/* ── New User Onboarding ────────────────── */}
+      {profileNotFound && !profileData && (
+        <div className="orin-card fade-up" style={{ marginBottom: 40, textAlign: "center", borderColor: "var(--gold)" }}>
+          <div className="section-label" style={{ justifyContent: "center", marginBottom: 16, color: "var(--gold)" }}>Identity Not Found</div>
+          <p style={{ marginBottom: 20, fontSize: 14 }}>No on-chain profile found for <strong>{guestEmail}</strong>. You must register on Solana to use ORIN.</p>
+          <button 
+            onClick={handleInitialize}
+            disabled={isInitializing}
+            className={`btn-primary ${isInitializing ? "btn-disabled" : ""}`}
+            style={{ width: "auto" }}
+          >
+            {isInitializing ? "Registering on Solana..." : "Initialize Guest Profile"}
+          </button>
+          {error && <p style={{ color: "var(--danger)", marginTop: 12, fontSize: 12 }}>{error}</p>}
         </div>
       )}
 
