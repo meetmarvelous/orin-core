@@ -1,4 +1,5 @@
 import { GuestContext, OrinAgentOutput } from "../ai_agent";
+export { GuestContext, OrinAgentOutput };
 
 /**
  * State provider contracts
@@ -43,4 +44,12 @@ export interface IStateProvider {
   // User/device preferences.
   getUserPreferences(deviceId: string): Promise<UserPreferences | null>;
   setUserPreferences(deviceId: string, prefs: UserPreferences): Promise<void>;
+
+  /**
+   * DIRECT BYPASS (Manual slider or pre-calculated AI)
+   * Stores the full payload indexed by its SHA-256 hash.
+   * The listener will use this to skip AI inference if the hash matches.
+   */
+  setDirectPayload(hashHex: string, payload: any): Promise<void>;
+  getDirectPayload(hashHex: string): Promise<any | null>;
 }

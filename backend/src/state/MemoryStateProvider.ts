@@ -1,4 +1,4 @@
-import { IStateProvider, PendingCommand, UserPreferences, ValidatedState } from "./IStateProvider";
+import { IStateProvider, OrinAgentOutput, PendingCommand, UserPreferences, ValidatedState } from "./IStateProvider";
 
 /**
  * In-memory state provider
@@ -11,6 +11,7 @@ export class MemoryStateProvider implements IStateProvider {
   private readonly pending = new Map<string, PendingCommand>();
   private readonly validated = new Map<string, ValidatedState>();
   private readonly prefs = new Map<string, UserPreferences>();
+  private readonly directPayloads = new Map<string, any>();
 
   async getLastProcessedHash(guestPda: string): Promise<string | null> {
     return this.lastHash.get(guestPda) ?? null;
@@ -42,5 +43,13 @@ export class MemoryStateProvider implements IStateProvider {
 
   async setUserPreferences(deviceId: string, prefs: UserPreferences): Promise<void> {
     this.prefs.set(deviceId, prefs);
+  }
+
+  async setDirectPayload(hashHex: string, payload: any): Promise<void> {
+    this.directPayloads.set(hashHex, payload);
+  }
+
+  async getDirectPayload(hashHex: string): Promise<any | null> {
+    return this.directPayloads.get(hashHex) ?? null;
   }
 }

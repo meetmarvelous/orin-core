@@ -65,4 +65,14 @@ export class RedisStateProvider implements IStateProvider {
     // 30-day TTL for device-specific personalization.
     await this.redis.set(`orin:user_prefs:${deviceId}`, JSON.stringify(prefs), "EX", 30 * 24 * 3600);
   }
+
+  async setDirectPayload(hashHex: string, payload: any): Promise<void> {
+    // 10-minute TTL to store direct payloads awaiting confirmation signs.
+    await this.redis.set(`orin:payload:${hashHex}`, JSON.stringify(payload), "EX", 600);
+  }
+
+  async getDirectPayload(hashHex: string): Promise<any | null> {
+    const raw = await this.redis.get(`orin:payload:${hashHex}`);
+    return raw ? JSON.parse(raw) : null;
+  }
 }
