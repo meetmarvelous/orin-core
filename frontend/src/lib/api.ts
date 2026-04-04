@@ -23,6 +23,8 @@ export interface VoiceCommandResponse {
   guestPda: string;
   message: string;
   hash: string;
+  requiresSignature?: boolean;
+  aiResult?: any;
 }
 
 export interface ManualPreferencesRequest {

@@ -395,7 +395,7 @@ const Dashboard = ({
       .catch(e => console.warn("TTS failed:", e));
 
     try {
-      const guestPda = deriveGuestPda(wallet.publicKey.toBase58()).pda;
+      const guestPda = deriveGuestPda(guestName, wallet.publicKey).pda;
       const provider = getProvider(wallet);
       const program = getProgram(provider, idl as any);
       
@@ -405,15 +405,26 @@ const Dashboard = ({
         wallet.publicKey,
         text,
         { temp: temperature, lighting: lightingMode, services: [], raw_response: "" },
-        { name: guestName, loyaltyPoints: parseInt(loyaltyPoints) || 0, history: [] }
+        { name: guestName, loyaltyPoints: parseInt(loyaltyPoints) || 0, history: [] },
+        (asyncText: string) => {
+          setChatMessages((prev) => {
+            const newMsgs = [...prev];
+            newMsgs[newMsgs.length - 1] = { role: "orin", text: asyncText };
+            return newMsgs;
+          });
+        }
       );
       
-      // Update with actual response message
-      setChatMessages((prev) => {
-        const newMsgs = [...prev];
-        newMsgs[newMsgs.length - 1] = { role: "orin", text: `AI command encrypted on-chain. Signature: ${res.solanaTxSignature.slice(0, 8)}...` };
-        return newMsgs;
-      });
+      // Append signature silently to chat if it was required
+      const sigStr = res.solanaTxSignature;
+      if (sigStr) {
+        setChatMessages((prev) => {
+          const newMsgs = [...prev];
+          const currentText = newMsgs[newMsgs.length - 1].text;
+          newMsgs[newMsgs.length - 1] = { role: "orin", text: `${currentText} (Signature: ${sigStr.slice(0, 8)}...)` };
+          return newMsgs;
+        });
+      }
     } catch (e: any) {
       setChatMessages((prev) => {
         const newMsgs = [...prev];
@@ -427,7 +438,7 @@ const Dashboard = ({
     if (!wallet.publicKey) return;
     setIsSaving(true);
     try {
-      const guestPda = deriveGuestPda(wallet.publicKey.toBase58()).pda;
+      const guestPda = deriveGuestPda(guestName, wallet.publicKey).pda;
       const provider = getProvider(wallet);
       const program = getProgram(provider, idl as any);
 
@@ -438,7 +449,8 @@ const Dashboard = ({
         { temp: temperature, lighting: lightingMode, services: [], raw_response: "" },
         { name: guestName, loyaltyPoints: parseInt(loyaltyPoints) || 0, history: [] }
       );
-      alert(`Success: Environment applied.\nSignature: ${res.solanaTxSignature.slice(0,10)}...`);
+      const sigText = res.solanaTxSignature ? `\nSignature: ${res.solanaTxSignature.slice(0,10)}...` : ``;
+      alert(`Success: Environment applied.${sigText}`);
     } catch (e: any) {
       alert(`Error saving setup: ${e.message}`);
     } finally {

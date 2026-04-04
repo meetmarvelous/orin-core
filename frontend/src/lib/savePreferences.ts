@@ -45,7 +45,9 @@ export interface RoomPreferences {
 export interface SavePreferencesResult {
   apiAccepted: boolean;
   hashHex: string;
-  solanaTxSignature: string;
+  solanaTxSignature?: string;
+  requiresSignature?: boolean;
+  aiResult?: any;
 }
 
 /**
@@ -59,13 +61,18 @@ export async function saveVoicePreferences(
   ownerPubkey: PublicKey,
   userInput: string,
   preferences: RoomPreferences,
-  guestContext: GuestContext
+  guestContext: GuestContext,
+  onTextReady?: (text: string) => void
 ): Promise<SavePreferencesResult> {
   const apiResponse = await stageVoiceCommand({
     guestPda: guestPda.toBase58(),
     userInput,
     guestContext,
   });
+
+  if (onTextReady && apiResponse.aiResult) {
+    onTextReady(apiResponse.aiResult.raw_response || apiResponse.aiResult.text || "Command processed.");
+  }
 
   // Extract the true AI-resolved Hash hex from the backend response
   const hashHex = apiResponse.hash;
@@ -74,12 +81,22 @@ export async function saveVoicePreferences(
   // Convert hex back to 32-byte Uint8Array for Anchor signing
   const hashBytes = new Uint8Array(hashHex.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16)));
 
-  const txSignature = await updatePreferencesOnChain(
-    program, guestPda, ownerPubkey, hashBytes,
-    getRelayOpts()   // ← Gas Relay: server co-signs + broadcasts, guest pays nothing
-  );
+  let txSignature: string | undefined = undefined;
 
-  return { apiAccepted: apiResponse.status === "accepted", hashHex, solanaTxSignature: txSignature };
+  if (apiResponse.requiresSignature) {
+    txSignature = await updatePreferencesOnChain(
+      program, guestPda, ownerPubkey, hashBytes,
+      getRelayOpts()
+    );
+  }
+
+  return { 
+    apiAccepted: apiResponse.status === "accepted", 
+    hashHex, 
+    solanaTxSignature: txSignature,
+    requiresSignature: apiResponse.requiresSignature,
+    aiResult: apiResponse.aiResult
+  };
 }
 
 /**
@@ -109,10 +126,21 @@ export async function saveManualPreferences(
   const hashBytes = await generateSha256Hash(canonicalBody);
   const hashHex = Array.from(hashBytes).map((b) => b.toString(16).padStart(2, "0")).join("");
 
-  const txSignature = await updatePreferencesOnChain(
-    program, guestPda, ownerPubkey, hashBytes,
-    getRelayOpts()   // ← Gas Relay: server co-signs + broadcasts, guest pays nothing
-  );
+  let txSignature: string | undefined = undefined;
 
-  return { apiAccepted: apiResponse.status === "accepted", hashHex, solanaTxSignature: txSignature };
+  // Manual bypass often requires signature to sync state, but we obey backend
+  if (apiResponse.requiresSignature !== false) {
+    txSignature = await updatePreferencesOnChain(
+      program, guestPda, ownerPubkey, hashBytes,
+      getRelayOpts()
+    );
+  }
+
+  return { 
+    apiAccepted: apiResponse.status === "accepted", 
+    hashHex, 
+    solanaTxSignature: txSignature,
+    requiresSignature: apiResponse.requiresSignature !== false,
+    aiResult: apiResponse.aiResult
+  };
 }

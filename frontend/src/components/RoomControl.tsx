@@ -70,7 +70,7 @@ export default function RoomControl() {
       const connection = getConnection();
       const provider = new AnchorProvider(connection, anchorWallet, { commitment: "confirmed" });
       const program = new Program(idl as Idl, provider);
-      const { pda } = deriveGuestPda(guestEmail);
+      const { pda } = deriveGuestPda(guestEmail, publicKey!);
       const preferences: RoomPreferences = {
         temp: temperature,
         lighting: lightingType,
@@ -135,7 +135,7 @@ export default function RoomControl() {
             const connection = getConnection();
             const provider = new AnchorProvider(connection, anchorWallet, { commitment: "confirmed" });
             const program = new Program(idl as Idl, provider);
-            const { pda } = deriveGuestPda(guestEmail);
+            const { pda } = deriveGuestPda(guestEmail, publicKey!);
         
             const preferences: RoomPreferences = {
               temp: temperature,
@@ -323,7 +323,7 @@ export default function RoomControl() {
           <div className="status-detail">
             <div>Step A · {saveResult.apiAccepted ? "API Accepted ✓" : "API Rejected ✗"}</div>
             <div>Step B · Hash: {saveResult.hashHex.slice(0, 20)}...</div>
-            <div>Step C · TX: {saveResult.solanaTxSignature.slice(0, 20)}...</div>
+            <div>Step C · TX: {saveResult.solanaTxSignature?.slice(0, 20)}...</div>
           </div>
         </div>
       )}

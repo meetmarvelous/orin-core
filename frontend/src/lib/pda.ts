@@ -17,26 +17,25 @@ export const ORIN_PROGRAM_ID = new PublicKey(
 );
 
 /**
- * Derives the unique Guest Identity PDA from a raw email string.
- * The email is lowercased and trimmed before hashing, matching
- * the convention used in tests/orin_identity.ts and
- * backend/src/simulate_frontend.ts.
+ * Derives the unique Guest Identity PDA from a raw identifier string and user wallet.
+ * Security Update: Seed scheme [b"guest", identifier_hash, user.key()]
  *
- * @param email - Guest's raw email string
- * @returns Guest PDA PublicKey and the email hash buffer
+ * @param identifier - Guest's raw identifier string (e.g. name or email)
+ * @param userPubkey - The Guest's connected Phantom wallet public key
+ * @returns Guest PDA PublicKey and the identifier hash buffer
  */
-export function deriveGuestPda(email: string): {
+export function deriveGuestPda(identifier: string, userPubkey: PublicKey): {
   pda: PublicKey;
-  emailHash: Uint8Array;
+  identifierHash: Uint8Array;
 } {
-  const normalizedEmail = email.toLowerCase().trim();
-  const emailHashArray = sha256.array(normalizedEmail);
-  const emailHash = new Uint8Array(emailHashArray);
+  const normalizedIdentifier = identifier.toLowerCase().trim();
+  const identifierHashArray = sha256.array(normalizedIdentifier);
+  const identifierHash = new Uint8Array(identifierHashArray);
 
   const [pda] = PublicKey.findProgramAddressSync(
-    [Buffer.from("guest"), Buffer.from(emailHash)],
+    [Buffer.from("guest"), Buffer.from(identifierHash), userPubkey.toBuffer()],
     ORIN_PROGRAM_ID
   );
 
-  return { pda, emailHash };
+  return { pda, identifierHash };
 }

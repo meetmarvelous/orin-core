@@ -41,7 +41,7 @@ export default function GuestDashboard({ onEnterRoom }: GuestDashboardProps) {
         const connection = getConnection();
         const provider = new AnchorProvider(connection, anchorWallet, { commitment: "confirmed" });
         const program = new Program(idl as Idl, provider);
-        const { pda } = deriveGuestPda(guestEmail);
+        const { pda } = deriveGuestPda(guestEmail, publicKey!);
         
         const data = await fetchGuestProfile(program, pda);
         if (data === null) {
@@ -73,13 +73,13 @@ export default function GuestDashboard({ onEnterRoom }: GuestDashboardProps) {
       const connection = getConnection();
       const provider = new AnchorProvider(connection, anchorWallet, { commitment: "confirmed" });
       const program = new Program(idl as Idl, provider);
-      const { pda, emailHash } = deriveGuestPda(guestEmail);
+      const { pda, identifierHash } = deriveGuestPda(guestEmail, publicKey!);
       
       await initializeGuestOnChain(
         program,
         pda,
         publicKey,
-        emailHash,
+        identifierHash,
         guestEmail.split("@")[0],
         getRelayOpts()
 
