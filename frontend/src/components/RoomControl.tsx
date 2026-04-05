@@ -80,7 +80,7 @@ export default function RoomControl() {
 
       const guestContext: GuestContext = { name: guestEmail.split("@")[0], loyaltyPoints: 0, history: [] };
 
-      const result = await saveManualPreferences(program, pda, publicKey, preferences, guestContext);
+      const result = await saveManualPreferences(program, pda, publicKey, preferences, guestContext, guestEmail);
 
       setSaveResult(result);
     } catch (err: any) {
@@ -146,7 +146,7 @@ export default function RoomControl() {
             const guestContext: GuestContext = { name: guestEmail.split("@")[0], loyaltyPoints: 0, history: [] };
 
             const command = transcribedText.trim() || "Set room to relax mode";
-            const result = await saveVoicePreferences(program, pda, publicKey, command, preferences, guestContext);
+            const result = await saveVoicePreferences(program, pda, publicKey, command, preferences, guestContext, guestEmail);
             setSaveResult(result);
           } catch (err: any) {
             setSaveError(err.message || "Voice AI transcription failed.");

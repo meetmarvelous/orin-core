@@ -380,50 +380,62 @@ const Dashboard = ({
     });
     setChatMessages((prev) => [...prev, { role: "orin", text: `I'll adjust that for you right away, ${guestName}. Processing your request...` }]);
 
-    // 1. Fast Voice Parallel Fetch
-    fetchFastVoiceReply({
-      userInput: text,
-      guestContext: { name: guestName, loyaltyPoints: parseInt(loyaltyPoints) || 0, history: [] }
-    })
-      .then(r => {
-        if (r.audioBase64) {
-          new Audio("data:" + r.mimeType + ";base64," + r.audioBase64)
-            .play()
-            .catch(e => console.warn("Autoplay blocked:", e));
-        }
-      })
-      .catch(e => console.warn("TTS failed:", e));
-
     try {
-      const guestPda = deriveGuestPda(guestName, wallet.publicKey).pda;
-      const provider = getProvider(wallet);
-      const program = getProgram(provider, idl as any);
-      
-      const res = await saveVoicePreferences(
-        program,
-        guestPda,
-        wallet.publicKey,
-        text,
-        { temp: temperature, lighting: lightingMode, services: [], raw_response: "" },
-        { name: guestName, loyaltyPoints: parseInt(loyaltyPoints) || 0, history: [] },
-        (asyncText: string) => {
+      // 1. Fire /voice-fast FIRST — get instant subtitle + audio
+      const fastResult = await fetchFastVoiceReply({
+        userInput: text,
+        guestContext: { name: guestName, loyaltyPoints: parseInt(loyaltyPoints) || 0, history: [] }
+      });
+
+      // 2. Instantly render the text subtitle from voice-fast
+      if (fastResult.text) {
+        setChatMessages((prev) => {
+          const newMsgs = [...prev];
+          newMsgs[newMsgs.length - 1] = { role: "orin", text: fastResult.text! };
+          return newMsgs;
+        });
+      }
+
+      // 3. Play audio (non-blocking)
+      if (fastResult.audioBase64) {
+        new Audio("data:" + fastResult.mimeType + ";base64," + fastResult.audioBase64)
+          .play()
+          .catch(e => console.warn("Autoplay blocked:", e));
+      }
+
+      // 4. Only trigger the heavier /voice-command + Solana flow if fastIntent === true
+      if (fastResult.fastIntent) {
+        const guestPda = deriveGuestPda(guestName, wallet.publicKey).pda;
+        const provider = getProvider(wallet);
+        const program = getProgram(provider, idl as any);
+        
+        const res = await saveVoicePreferences(
+          program,
+          guestPda,
+          wallet.publicKey,
+          text,
+          { temp: temperature, lighting: lightingMode, services: [], raw_response: "" },
+          { name: guestName, loyaltyPoints: parseInt(loyaltyPoints) || 0, history: [] },
+          guestName,
+          (asyncText: string) => {
+            setChatMessages((prev) => {
+              const newMsgs = [...prev];
+              newMsgs[newMsgs.length - 1] = { role: "orin", text: asyncText };
+              return newMsgs;
+            });
+          }
+        );
+        
+        // Append signature silently to chat if it was required
+        const sigStr = res.solanaTxSignature;
+        if (sigStr) {
           setChatMessages((prev) => {
             const newMsgs = [...prev];
-            newMsgs[newMsgs.length - 1] = { role: "orin", text: asyncText };
+            const currentText = newMsgs[newMsgs.length - 1].text;
+            newMsgs[newMsgs.length - 1] = { role: "orin", text: `${currentText} (Signature: ${sigStr.slice(0, 8)}...)` };
             return newMsgs;
           });
         }
-      );
-      
-      // Append signature silently to chat if it was required
-      const sigStr = res.solanaTxSignature;
-      if (sigStr) {
-        setChatMessages((prev) => {
-          const newMsgs = [...prev];
-          const currentText = newMsgs[newMsgs.length - 1].text;
-          newMsgs[newMsgs.length - 1] = { role: "orin", text: `${currentText} (Signature: ${sigStr.slice(0, 8)}...)` };
-          return newMsgs;
-        });
       }
     } catch (e: any) {
       setChatMessages((prev) => {
@@ -447,7 +459,8 @@ const Dashboard = ({
         guestPda,
         wallet.publicKey,
         { temp: temperature, lighting: lightingMode, services: [], raw_response: "" },
-        { name: guestName, loyaltyPoints: parseInt(loyaltyPoints) || 0, history: [] }
+        { name: guestName, loyaltyPoints: parseInt(loyaltyPoints) || 0, history: [] },
+        guestName
       );
       const sigText = res.solanaTxSignature ? `\nSignature: ${res.solanaTxSignature.slice(0,10)}...` : ``;
       alert(`Success: Environment applied.${sigText}`);

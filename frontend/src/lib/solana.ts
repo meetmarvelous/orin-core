@@ -74,36 +74,87 @@ export async function updatePreferencesOnChain(
   guestPda: PublicKey,
   ownerPubkey: PublicKey,
   preferencesHash: Uint8Array,
+  identifierHash: Uint8Array,
+  guestName: string,
   opts?: {
     feePayerPubkey?: PublicKey;
     relayFn?: (serializedTx: string) => Promise<{ signature: string }>;
   }
 ): Promise<string> {
+  const connection = program.provider.connection;
   const useRelay = !!(opts?.feePayerPubkey && opts?.relayFn);
+
+  // ── Lazy Init check: does the PDA exist on-chain? ──────────────
+  const accountInfo = await connection.getAccountInfo(guestPda);
+  const needsInit = accountInfo === null;
 
   if (!useRelay) {
     // ── Direct-pay mode (guest pays gas themselves) ──────────────
-    const tx = await (program.methods as any)
+    if (!needsInit) {
+      // Account exists — simple single-instruction RPC
+      const tx = await (program.methods as any)
+        .updatePreferences(Array.from(preferencesHash))
+        .accounts({ guestProfile: guestPda, owner: ownerPubkey } as any)
+        .rpc();
+      return tx;
+    }
+
+    // Account missing — build atomic init + update transaction
+    const { blockhash } = await connection.getLatestBlockhash("confirmed");
+    const { Transaction } = await import("@solana/web3.js");
+    const tx = new Transaction({ recentBlockhash: blockhash, feePayer: ownerPubkey });
+
+    const initIx = await (program.methods as any)
+      .initializeGuest(Array.from(identifierHash), guestName)
+      .accounts({
+        guestProfile: guestPda,
+        user: ownerPubkey,
+        feePayer: ownerPubkey,
+        systemProgram: SystemProgram.programId,
+      } as any)
+      .instruction();
+    tx.add(initIx);
+
+    const updateIx = await (program.methods as any)
       .updatePreferences(Array.from(preferencesHash))
       .accounts({ guestProfile: guestPda, owner: ownerPubkey } as any)
-      .rpc();
-    return tx;
+      .instruction();
+    tx.add(updateIx);
+
+    const signedTx = await (program.provider as any).wallet.signTransaction(tx);
+    const sig = await connection.sendRawTransaction(signedTx.serialize());
+    await connection.confirmTransaction(sig, "confirmed");
+    return sig;
   }
 
   // ── Gas Relay mode (ORIN pays gas on behalf of the guest) ────
-  const connection = program.provider.connection;
-  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash("confirmed");
+  const { blockhash } = await connection.getLatestBlockhash("confirmed");
 
-  const instruction = await (program.methods as any)
-    .updatePreferences(Array.from(preferencesHash))
-    .accounts({ guestProfile: guestPda, owner: ownerPubkey } as any)
-    .instruction();
-
-  const tx = new (await import("@solana/web3.js")).Transaction({
+  const { Transaction } = await import("@solana/web3.js");
+  const tx = new Transaction({
     recentBlockhash: blockhash,
     feePayer: opts!.feePayerPubkey,  // server is the fee payer
   });
-  tx.add(instruction);
+
+  // Lazy Init: prepend initializeGuest if needed
+  if (needsInit) {
+    const initIx = await (program.methods as any)
+      .initializeGuest(Array.from(identifierHash), guestName)
+      .accounts({
+        guestProfile: guestPda,
+        user: ownerPubkey,
+        feePayer: opts!.feePayerPubkey,   // Server covers rent
+        systemProgram: SystemProgram.programId,
+      } as any)
+      .instruction();
+    tx.add(initIx);
+  }
+
+  const updateIx = await (program.methods as any)
+    .updatePreferences(Array.from(preferencesHash))
+    .accounts({ guestProfile: guestPda, owner: ownerPubkey } as any)
+    .instruction();
+  tx.add(updateIx);
 
   // Guest wallet partial-signs — authorizes the instruction; fee-payer sig is missing
   const signedTx = await (program.provider as any).wallet.signTransaction(tx);

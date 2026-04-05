@@ -13,9 +13,9 @@
 
 import { Program } from "@coral-xyz/anchor";
 import { PublicKey } from "@solana/web3.js";
-import { generateSha256Hash } from "./hash";
 import { stageVoiceCommand, stageManualPreferences, GuestContext, relayTransaction } from "./api";
 import { updatePreferencesOnChain } from "./solana";
+import { deriveGuestPda } from "./pda";
 
 /**
  * Lazily resolves the relay opts at call-time (not at module-init).
@@ -62,6 +62,7 @@ export async function saveVoicePreferences(
   userInput: string,
   preferences: RoomPreferences,
   guestContext: GuestContext,
+  guestIdentifier: string,
   onTextReady?: (text: string) => void
 ): Promise<SavePreferencesResult> {
   const apiResponse = await stageVoiceCommand({
@@ -84,8 +85,10 @@ export async function saveVoicePreferences(
   let txSignature: string | undefined = undefined;
 
   if (apiResponse.requiresSignature) {
+    const { identifierHash } = deriveGuestPda(guestIdentifier, ownerPubkey);
     txSignature = await updatePreferencesOnChain(
       program, guestPda, ownerPubkey, hashBytes,
+      identifierHash, guestContext.name,
       getRelayOpts()
     );
   }
@@ -109,7 +112,8 @@ export async function saveManualPreferences(
   guestPda: PublicKey,
   ownerPubkey: PublicKey,
   preferences: RoomPreferences,
-  guestContext: GuestContext
+  guestContext: GuestContext,
+  guestIdentifier: string
 ): Promise<SavePreferencesResult> {
   // Build the EXACT body object that will be sent to the backend.
   // The backend hashes request.body, so we must hash this SAME object locally
@@ -122,16 +126,19 @@ export async function saveManualPreferences(
 
   const apiResponse = await stageManualPreferences(canonicalBody);
 
-  // Hash the same canonical body — not just preferences — to match the backend hash
-  const hashBytes = await generateSha256Hash(canonicalBody);
-  const hashHex = Array.from(hashBytes).map((b) => b.toString(16).padStart(2, "0")).join("");
+  // Use the backend's deterministic hash (matches what the AI pipeline produces)
+  const hashHex = apiResponse.hash;
+  if (!hashHex) throw new Error("Backend did not return a canonical Hash.");
+  const hashBytes = new Uint8Array(hashHex.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16)));
 
   let txSignature: string | undefined = undefined;
 
   // Manual bypass often requires signature to sync state, but we obey backend
   if (apiResponse.requiresSignature !== false) {
+    const { identifierHash } = deriveGuestPda(guestIdentifier, ownerPubkey);
     txSignature = await updatePreferencesOnChain(
       program, guestPda, ownerPubkey, hashBytes,
+      identifierHash, guestContext.name,
       getRelayOpts()
     );
   }

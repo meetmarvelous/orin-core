@@ -191,6 +191,8 @@ export async function fetchFastVoiceReply(payload: {
   status: string;
   mimeType: string;
   audioBase64: string;
+  text?: string;
+  fastIntent?: boolean;
 }> {
   const response = await fetch(`${API_BASE}/api/v1/voice-fast`, {
     method: "POST",
