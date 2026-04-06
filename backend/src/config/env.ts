@@ -17,6 +17,11 @@ const envSchema = z.object({
   DEEPGRAM_TTS_MODEL: z.string().min(1).default("aura-2-orion-en"),
   DEEPGRAM_STT_MODEL: z.string().min(1).default("nova-2"),
   
+  // High-Fidelity API Configuration
+  CARTESIA_API_KEY: z.string().optional().default(""),
+  CARTESIA_VOICE_ID: z.string().default("6ccbfb76-1fc6-48f7-b71d-91ac6298247b"),
+  CARTESIA_MODEL_ID: z.string().default("sonic-3"),
+  
   // Edge AI Pipeline Configuration (Feature Flags)
   USE_EDGE_PIPELINE: z.enum(["true", "false"]).default("false").transform(v => v === "true"),
   EDGE_LLM_ENDPOINT: z.string().url().default("http://127.0.0.1:11434/api/chat"),

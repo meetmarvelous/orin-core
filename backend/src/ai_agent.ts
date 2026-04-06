@@ -137,6 +137,53 @@ export class CloudDeepgramProvider implements ITTSProvider {
   }
 }
 
+export class CloudCartesiaProvider implements ITTSProvider {
+  constructor(
+    private readonly apiKey: string,
+    private readonly defaultModelId: string,
+    private readonly defaultVoiceId: string
+  ) {}
+
+  async speak(text: string, options?: { voiceModel?: string; timeoutMs?: number }): Promise<Buffer> {
+    if (!text || !text.trim()) throw new Error("speak(text) requires non-empty text.");
+    
+    if (!this.apiKey) {
+      throw new Error("CARTESIA_API_KEY is not configured.");
+    }
+
+    const response = await fetch("https://api.cartesia.ai/tts/bytes", {
+      method: "POST",
+      headers: {
+        "Cartesia-Version": "2026-03-01",
+        "Authorization": `Bearer ${this.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model_id: this.defaultModelId,
+        transcript: text,
+        voice: {
+          mode: "id",
+          id: options?.voiceModel ?? this.defaultVoiceId,
+        },
+        language: "en",
+        generation_config: {
+          volume: 1.0,
+          speed: 1.0,
+          emotion: "calm"
+        },
+        output_format: {
+          container: "mp3",
+          sample_rate: 44100,
+          bit_rate: 128000
+        },
+      }),
+    });
+
+    if (!response.ok) throw new Error(`Cartesia API error (${response.status}): ${await response.text()}`);
+    return Buffer.from(await response.arrayBuffer());
+  }
+}
+
 // ============================================================================
 // ADAPTERS (Edge / Local Providers for Federico)
 // ============================================================================
@@ -166,6 +213,11 @@ export class OrinAgent {
   private cloudLlm = new CloudGroqProvider(this.env.GROQ_API_KEY, this.env.GROQ_MODEL, this.env.GROQ_TIMEOUT_BG_MS);
   private edgeLlm = new EdgeLocalLlmProvider(this.env.EDGE_LLM_ENDPOINT);
   
+  private cloudCartesia = new CloudCartesiaProvider(
+    this.env.CARTESIA_API_KEY,
+    this.env.CARTESIA_MODEL_ID,
+    this.env.CARTESIA_VOICE_ID
+  );
   private cloudTts = new CloudDeepgramProvider(this.env.DEEPGRAM_API_KEY, this.env.DEEPGRAM_TTS_MODEL);
   private edgeTts = new EdgeLocalTtsProvider(this.env.EDGE_TTS_ENDPOINT);
 
@@ -293,11 +345,20 @@ export class OrinAgent {
   }
 
   async speak(text: string, options?: { voiceModel?: string }): Promise<Buffer> {
-    return await this.executeWithFallback(
-      () => this.edgeTts.speak(text, options),
-      () => this.cloudTts.speak(text, options),
-      "TTS Generation"
-    );
+    if (this.env.USE_EDGE_PIPELINE) {
+      try {
+        return await this.edgeTts.speak(text, options);
+      } catch (err) {
+        logger.warn({ task: "TTS Generation", err: err instanceof Error ? err.message : String(err) }, "Edge TTS driver disconnected/timed out, seamlessly cascading to Cartesia...");
+      }
+    }
+
+    try {
+      return await this.cloudCartesia.speak(text, options);
+    } catch (err) {
+      logger.warn({ task: "TTS Generation", err: err instanceof Error ? err.message : String(err) }, "Cartesia high-fidelity TTS failed or not configured, seamlessly falling back to Deepgram...");
+      return await this.cloudTts.speak(text, options);
+    }
   }
 
   private parsePayloadFromText(text: string): OrinAgentOutput {

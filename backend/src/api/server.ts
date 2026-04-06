@@ -267,6 +267,7 @@ async function prewarmServices(): Promise<void> {
           audioBase64: audio.toString("base64"),
           createdAt: Date.now(),
         });
+        await new Promise(resolve => setTimeout(resolve, 500)); 
       }
     }
 
