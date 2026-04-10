@@ -1500,32 +1500,38 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-background text-text-primary selection:bg-accent selection:text-black">
-      <AnimatePresence mode="wait">
-        {view === "landing" && (
-          <motion.div key="landing" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <LandingPage onConnect={() => setView("onboarding")} />
-          </motion.div>
-        )}
-        {view === "onboarding" && (
-          <motion.div key="onboarding" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
-            <OnboardingFlow onComplete={handleOnboardingComplete} onBack={() => { disconnect(); setView("landing"); }} />
-          </motion.div>
-        )}
-        {view === "dashboard" && (
-          <motion.div key="dashboard" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
-            <Dashboard
-              guestName={guestName}
-              guestEmail={guestEmail}
-              walletAddress={walletAddress}
-              profileData={profileData}
-              isProfileLoading={isProfileLoading}
-              setProfileData={setProfileData}
-              onLogout={handleLogout}
-            />
-          </motion.div>
-        )}
-      </AnimatePresence>
+    <div className="min-h-screen bg-background text-text-primary selection:bg-accent selection:text-black relative overflow-hidden">
+      {/* Background Peripheral Glows — Pure Aesthetics */}
+      <div className="fixed -top-[20%] -right-[10%] w-[60%] h-[60%] bg-accent/5 blur-[120px] rounded-full pointer-events-none z-0" />
+      <div className="fixed -bottom-[10%] -left-[10%] w-[40%] h-[40%] bg-accent/10 blur-[100px] rounded-full pointer-events-none z-0" />
+
+      <div className="relative z-10 flex flex-col min-h-screen">
+        <AnimatePresence mode="wait">
+          {view === "landing" && (
+            <motion.div key="landing" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+              <LandingPage onConnect={() => setView("onboarding")} />
+            </motion.div>
+          )}
+          {view === "onboarding" && (
+            <motion.div key="onboarding" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
+              <OnboardingFlow onComplete={handleOnboardingComplete} onBack={() => { disconnect(); setView("landing"); }} />
+            </motion.div>
+          )}
+          {view === "dashboard" && (
+            <motion.div key="dashboard" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}>
+              <Dashboard
+                guestName={guestName}
+                guestEmail={guestEmail}
+                walletAddress={walletAddress}
+                profileData={profileData}
+                isProfileLoading={isProfileLoading}
+                setProfileData={setProfileData}
+                onLogout={handleLogout}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
     </div>
   );
 }
