@@ -27,6 +27,14 @@ const envSchema = z.object({
   EDGE_LLM_ENDPOINT: z.string().url().default("http://127.0.0.1:11434/api/chat"),
   EDGE_TTS_ENDPOINT: z.string().url().default("http://127.0.0.1:5002/api/tts"),
 
+  /**
+   * When true, /api/v1/voice-fast will skip the ACK_VARIATIONS pre-warmed cache
+   * and call generateQuickVoiceReply() synchronously when no fast intent is matched.
+   * This produces context-aware, personalized replies at the cost of extra LLM + TTS latency.
+   * Set to false (default) for the fastest possible ACK round-trip.
+   */
+  USE_QUICK_REPLY_ACK: z.enum(["true", "false"]).default("false").transform(v => v === "true"),
+
   MQTT_BROKER_URL: z.string().min(1),
   MQTT_TOPIC: z.string().min(1),
   REDIS_URL: z.string().min(1),

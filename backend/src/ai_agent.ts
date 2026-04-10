@@ -6,6 +6,14 @@ export interface GuestContext {
   name: string;
   loyaltyPoints: number;
   history: string[];
+  currentPreferences?: {
+    temp?: number;
+    lighting?: string;
+    brightness?: number;
+    musicOn?: boolean;
+    services?: string[];
+    raw_response?: string;
+  };
 }
 
 export type LightingMode = "warm" | "cold" | "ambient";
@@ -13,9 +21,20 @@ export type LightingMode = "warm" | "cold" | "ambient";
 export interface OrinAgentOutput {
   temp: number;
   lighting: LightingMode;
+  brightness: number;
+  music: string;
   services: string[];
   raw_response: string;
 }
+
+const MUSIC_LIST = [
+  "Luxe Jazz Classics",
+  "Midnight Chill Lounge",
+  "Ocean Breeze Acoustic",
+  "Deep Tech House Night",
+  "Silk & Soul R&B",
+  "Classical Elegance"
+];
 
 const SYSTEM_PROMPT = `You are ORIN, the Elite Concierge and Luxury Property Management System. Your purpose is to provide flawless, automated assistance via voice.
 
@@ -27,8 +46,9 @@ const SYSTEM_PROMPT = `You are ORIN, the Elite Concierge and Luxury Property Man
 ### MVP SERVICES:
 1. ROOM CONTROL (IoT): You manage lighting, blinds, and climate control. (e.g., "Understood. Setting the temperature to 72 degrees").
 2. HOSPITALITY REQUESTS (Room Service): You process orders for dining, housekeeping, or amenities. Confirm the action and the estimated delivery time.
-3. WEB3 INFRASTRUCTURE: You validate digital payments and decentralized check-out processes. Inform the user that the transaction is backed by "Hash-Lock" security.
-4. VIP GUIDE: You recommend exclusive experiences and high-end venues that accept modern digital payments.
+3. ROOM AMBIANCE: You can adjust light brightness (0-100) and recommend music from the provided elite gallery based on the mood.
+4. WEB3 INFRASTRUCTURE: You validate digital payments and decentralized check-out processes. Inform the user that the transaction is backed by "Hash-Lock" security.
+5. VIP GUIDE: You recommend exclusive experiences and high-end venues that accept modern digital payments.
 
 ### OPERATIONAL RULES:
 - Voice Responses: Maximum 15 words to ensure a <500ms response time.
@@ -247,7 +267,9 @@ export class OrinAgent {
         SYSTEM_PROMPT,
         "Personalize responses with guest context, especially loyalty points.",
         "You MUST output only valid JSON with this exact schema and no extra keys:",
-        '{ "temp": number, "lighting": "warm" | "cold" | "ambient", "services": string[], "raw_response": string }',
+        '{ "temp": number, "lighting": "warm" | "cold" | "ambient", "brightness": number, "music": string, "services": string[], "raw_response": string }',
+        "`brightness` must be between 0 and 100. Default is 80 if not specified.",
+        `\`music\` MUST always be chosen from this list: ${MUSIC_LIST.join(", ")}. Pick the best match based on the guest's request and room ambiance.`,
         "The `raw_response` must be 15 words maximum.",
         "Do not output markdown, code fences, or any extra text.",
         "",
@@ -273,6 +295,13 @@ export class OrinAgent {
 
       const parsed = this.parsePayloadFromText(text);
       const payload = this.validateOutput(parsed);
+
+      // Apply musicOn gate at the TypeScript layer — deterministic and reliable.
+      // AI always picks the best music; we decide whether to surface it to the client.
+      if (!guestContext.currentPreferences?.musicOn) {
+        payload.music = "";
+      }
+
       const hash = this.generateHash(payload);
       return { payload, hash };
     } catch (error) {
@@ -372,7 +401,7 @@ export class OrinAgent {
   private validateOutput(data: unknown): OrinAgentOutput {
     if (typeof data !== "object" || data === null) throw new Error("AI output is not a JSON object.");
     const obj = data as Record<string, unknown>;
-    const allowedKeys = new Set(["temp", "lighting", "services", "raw_response"]);
+    const allowedKeys = new Set(["temp", "lighting", "brightness", "music", "services", "raw_response"]);
     const keys = Object.keys(obj);
 
     for (const key of keys) if (!allowedKeys.has(key)) throw new Error(`AI output has unsupported key: ${key}`);
@@ -380,9 +409,18 @@ export class OrinAgent {
 
     if (typeof obj.temp !== "number" || Number.isNaN(obj.temp)) throw new Error("AI output 'temp' must be a number.");
     if (obj.lighting !== "warm" && obj.lighting !== "cold" && obj.lighting !== "ambient") throw new Error("AI output 'lighting' must be 'warm' | 'cold' | 'ambient'.");
+    if (typeof obj.brightness !== "number" || obj.brightness < 0 || obj.brightness > 100) throw new Error("AI output 'brightness' must be a number between 0 and 100.");
+    if (typeof obj.music !== "string" || (obj.music !== "" && !MUSIC_LIST.includes(obj.music))) throw new Error(`AI output 'music' must be a string from the approved list or "" if music is off.`);
     if (!Array.isArray(obj.services) || !obj.services.every((v) => typeof v === "string")) throw new Error("AI output 'services' must be string[].");
     if (typeof obj.raw_response !== "string") throw new Error("AI output 'raw_response' must be a string.");
 
-    return { temp: obj.temp, lighting: obj.lighting, services: obj.services, raw_response: obj.raw_response };
+    return { 
+      temp: obj.temp, 
+      lighting: obj.lighting as LightingMode, 
+      brightness: obj.brightness,
+      music: obj.music,
+      services: obj.services, 
+      raw_response: obj.raw_response 
+    };
   }
 }

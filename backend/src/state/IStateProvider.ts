@@ -22,6 +22,34 @@ export interface ValidatedState {
   validatedAt: number;
 }
 
+/**
+ * Physical room device state — written by listener after each MQTT publish.
+ * Stored in Redis so both api and listener processes share truth.
+ */
+export interface RoomDeviceState {
+  /** Logical room identifier */
+  roomId: string;
+  /** Philips Hue lighting */
+  hue: {
+    color: string;     // hex e.g. "#FFB347"
+    brightness: number; // 0–100
+    on: boolean;
+  };
+  /** Semantic lighting mode — "warm" | "cold" | "ambient" */
+  lighting: "warm" | "cold" | "ambient";
+  /** Google Nest climate */
+  nest: {
+    target_temp_c: number;
+    mode: "HEAT" | "COOL" | "AUTO" | "OFF";
+  };
+  /** Music player — name from the MUSIC_LIST, or "" when off */
+  music: string;
+  /** ISO-8601 timestamp of last update */
+  lastUpdatedAt: string;
+  /** Solana PDA of guest who triggered the last change */
+  lastGuestPda: string | null;
+}
+
 export interface UserPreferences {
   name: string;
   loyaltyPoints: number;
@@ -52,4 +80,13 @@ export interface IStateProvider {
    */
   setDirectPayload(hashHex: string, payload: any): Promise<void>;
   getDirectPayload(hashHex: string): Promise<any | null>;
+
+  /**
+   * ROOM DEVICE STATE
+   * Full physical snapshot written by listener after every verified MQTT publish.
+   * Keyed by roomId so multiple rooms are isolated.
+   * Readable by any process (api, listener) via Redis.
+   */
+  setDeviceState(roomId: string, state: RoomDeviceState): Promise<void>;
+  getDeviceState(roomId: string): Promise<RoomDeviceState | null>;
 }

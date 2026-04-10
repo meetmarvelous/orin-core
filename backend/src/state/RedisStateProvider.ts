@@ -1,6 +1,6 @@
 import Redis from "ioredis";
 import { getEnv } from "../config/env";
-import { IStateProvider, PendingCommand, UserPreferences, ValidatedState } from "./IStateProvider";
+import { IStateProvider, PendingCommand, RoomDeviceState, UserPreferences, ValidatedState } from "./IStateProvider";
 
 /**
  * Redis-backed state provider
@@ -74,5 +74,15 @@ export class RedisStateProvider implements IStateProvider {
   async getDirectPayload(hashHex: string): Promise<any | null> {
     const raw = await this.redis.get(`orin:payload:${hashHex}`);
     return raw ? JSON.parse(raw) : null;
+  }
+
+  async setDeviceState(roomId: string, state: RoomDeviceState): Promise<void> {
+    // 24-hour TTL: persists across restarts, auto-expires stale rooms.
+    await this.redis.set(`orin:device_state:${roomId}`, JSON.stringify(state), "EX", 86400);
+  }
+
+  async getDeviceState(roomId: string): Promise<RoomDeviceState | null> {
+    const raw = await this.redis.get(`orin:device_state:${roomId}`);
+    return raw ? (JSON.parse(raw) as RoomDeviceState) : null;
   }
 }

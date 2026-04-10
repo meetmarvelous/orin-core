@@ -1,4 +1,4 @@
-import { IStateProvider, OrinAgentOutput, PendingCommand, UserPreferences, ValidatedState } from "./IStateProvider";
+import { IStateProvider, OrinAgentOutput, PendingCommand, RoomDeviceState, UserPreferences, ValidatedState } from "./IStateProvider";
 
 /**
  * In-memory state provider
@@ -12,6 +12,7 @@ export class MemoryStateProvider implements IStateProvider {
   private readonly validated = new Map<string, ValidatedState>();
   private readonly prefs = new Map<string, UserPreferences>();
   private readonly directPayloads = new Map<string, any>();
+  private readonly deviceStates = new Map<string, RoomDeviceState>();
 
   async getLastProcessedHash(guestPda: string): Promise<string | null> {
     return this.lastHash.get(guestPda) ?? null;
@@ -51,5 +52,13 @@ export class MemoryStateProvider implements IStateProvider {
 
   async getDirectPayload(hashHex: string): Promise<any | null> {
     return this.directPayloads.get(hashHex) ?? null;
+  }
+
+  async setDeviceState(roomId: string, state: RoomDeviceState): Promise<void> {
+    this.deviceStates.set(roomId, state);
+  }
+
+  async getDeviceState(roomId: string): Promise<RoomDeviceState | null> {
+    return this.deviceStates.get(roomId) ?? null;
   }
 }

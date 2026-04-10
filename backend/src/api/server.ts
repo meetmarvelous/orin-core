@@ -179,7 +179,13 @@ app.register(websocket);
 // ---------------------------------------------------------------------------
 const VOICE_CACHE_TTL_MS = 10 * 60 * 1000;
 const TTS_CACHE_TTL_MS = 10 * 60 * 1000;
-const ACK_TEXT = "Got it, processing your request now.";
+const ACK_VARIATIONS = [
+  "Got it, processing your request now.",
+  "Understood, I am on it.",
+  "Certainly. Handling that for you immediately.",
+  "Confirmed. I will take care of it right away.",
+  "Right away. Processing your command now."
+];
 const voiceCache = new Map<string, VoiceFastCached>();
 const ttsCache = new Map<string, VoiceFastCached>();
 
@@ -231,17 +237,21 @@ function findFastIntentReply(userInput: string): string | null {
 
 async function prewarmAckOnly(): Promise<void> {
   try {
-    if (!voiceCache.has("ack::default")) {
-      const ackAudio = await agent.speak(ACK_TEXT);
-      setVoiceCache("ack::default", {
-        text: ACK_TEXT,
-        audioBase64: ackAudio.toString("base64"),
-        createdAt: Date.now(),
-      });
+    for (let i = 0; i < ACK_VARIATIONS.length; i++) {
+      const text = ACK_VARIATIONS[i];
+      const cacheKey = `ack::${i}`;
+      if (!voiceCache.has(cacheKey)) {
+        const ackAudio = await agent.speak(text);
+        setVoiceCache(cacheKey, {
+          text,
+          audioBase64: ackAudio.toString("base64"),
+          createdAt: Date.now(),
+        });
+      }
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    logger.warn({ err: message }, "prewarm_ack_failed");
+    logger.warn({ err: message }, "prewarm_ack_variations_failed");
   }
 }
 
@@ -456,6 +466,143 @@ app.post("/api/v1/transcribe", async (request, reply) => {
 });
 
 /**
+ * DIRECT TEXT-TO-SPEECH (TTS) ENDPOINT
+ * -------------------------------------------------------------
+ * Utility endpoint to convert arbitrary text into high-fidelity audio blobs.
+ * Used for dynamic UI announcements, property welcomes, or system notifications.
+ * Bypasses AI intent detection to provide zero-overhead voice conversion.
+ */
+interface TtsBody {
+  text: string;
+  voiceModel?: string;
+}
+
+app.post<{ Body: TtsBody }>("/api/v1/tts", async (request, reply) => {
+  const reqLogger = request.reqLogger;
+  const t0 = Date.now();
+
+  // 1. Production Security Gate: Verify API Key from headers
+  const apiKey = request.headers["x-api-key"];
+  if (apiKey !== env.API_KEY) {
+    reqLogger.warn({ origin: request.headers.origin }, "unauthorized_tts_access_attempt");
+    return reply.status(401).send({ error: "Unauthorized. Valid X-API-KEY required." });
+  }
+
+  const { text} = request.body;
+
+  // 2. Input Integrity Validation
+  if (!text || !text.trim()) {
+    return reply.status(400).send({ error: "Required field 'text' is missing or empty." });
+  }
+
+  try {
+    reqLogger.info({ text_length: text.length }, "tts_conversion_started");
+
+    // 3. Invoke the Federated Router Speak method (Edge -> Cartesia -> Deepgram)
+    const audioBuffer = await agent.speak(text);
+    
+    const latency = Date.now() - t0;
+    reqLogger.info({ latency_ms: latency }, "tts_conversion_success");
+
+    // 4. Return standard response payload with audio as Base64 string
+    return reply.send({
+      status: "ok",
+      mimeType: "audio/mpeg",
+      audioBase64: audioBuffer.toString("base64"),
+      text: text,
+      latencyMs: latency
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unknown TTS failure";
+    reqLogger.error({ err: message }, "tts_conversion_critical_error");
+
+    return reply.status(500).send({
+      error: "TTS Generation failed",
+      details: message
+    });
+  }
+});
+
+/**
+ * DEVICE STATUS ENDPOINT
+ * -------------------------------------------------------------
+ *  * Returns a real-time snapshot of the current physical room state as
+ * maintained by the MQTT Device State Store (mqtt_mock.ts).
+ *
+ * The snapshot is updated synchronously every time the Solana listener
+ * validates a new hash-lock and publishes to the MQTT broker.
+ * No extra database round-trip is required — this is a pure in-memory read.
+ *
+ * Response schema:
+ *   roomId        — The logical room identifier ("room101" in MVP)
+ *   hue           — Philips Hue state: { color, brightness, on }
+ *   nest          — Google Nest state: { target_temp_c, mode }
+ *   lastUpdatedAt — ISO-8601 timestamp of the last confirmed update
+ *   lastGuestPda  — Solana PDA of the guest who triggered the last change
+ *
+ * The roomId is derived from the guestPda (first 4 chars), matching
+ * the format used by listener.ts when writing to Redis.
+ *
+ * Query Parameters:
+ *   guestPda  (recommended) — The guest's Solana PDA. roomId will be
+ *             auto-derived as "Room_<first4>".
+ *   roomId    (override)    — Pass an explicit roomId if needed.
+ *
+ * Example:
+ *   GET /api/v1/device/status?guestPda=8yiszuCmH9...
+ *   GET /api/v1/device/status?roomId=Room_8yis
+ */
+app.get<{ Querystring: { guestPda?: string; roomId?: string } }>(
+  "/api/v1/device/status",
+  async (request, reply) => {
+    const reqLogger = request.reqLogger;
+
+    // Production Security Gate
+    const apiKey = request.headers["x-api-key"];
+    if (apiKey !== env.API_KEY) {
+      reqLogger.warn({ origin: request.headers.origin }, "unauthorized_device_status_access");
+      return reply.status(401).send({ error: "Unauthorized. Valid X-API-KEY required." });
+    }
+
+    const { guestPda, roomId: roomIdParam } = request.query;
+
+    // Derive roomId: explicit override > auto-derive from guestPda > reject
+    let roomId: string;
+    if (roomIdParam) {
+      roomId = roomIdParam;
+    } else if (guestPda) {
+      // Must match listener.ts: "Room_" + guestPda.slice(0, 4)
+      roomId = `Room_${guestPda.slice(0, 4)}`;
+    } else {
+      return reply.status(400).send({
+        error: "Bad Request",
+        message: "Query parameter 'guestPda' or 'roomId' is required.",
+      });
+    }
+
+    try {
+      const snapshot = await stateProvider.getDeviceState(roomId);
+      const result = snapshot ?? {
+        roomId,
+        hue: { color: "#FFFFFF", brightness: 80, on: true },
+        nest: { target_temp_c: 22, mode: "AUTO" },
+        music: "",
+        lastUpdatedAt: null,
+        lastGuestPda: null,
+      };
+
+      reqLogger.info({ roomId, lastUpdatedAt: result.lastUpdatedAt }, "device_status_queried");
+      return reply.send({ status: "ok", device: result });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      reqLogger.error({ err: message }, "device_status_read_error");
+      return reply.status(500).send({ error: "Failed to read device state", details: message });
+    }
+  }
+);
+
+
+/**
  * VOICE FAST ENDPOINT (Low-latency voice reply)
  * -------------------------------------------------------------
  * Returns a cached or fast LLM response + TTS audio for quick replies.
@@ -559,7 +706,61 @@ app.post<{ Body: VoiceTestBody }>("/api/v1/voice-fast", async (request, reply) =
     }
 
     const t1 = Date.now();
-    const ack = getVoiceCache("ack::default");
+
+    // -------------------------------------------------------------------------
+    // STRATEGY SWITCH: USE_QUICK_REPLY_ACK
+    // When ON  → skip the pre-warmed ACK cache; call LLM + TTS synchronously
+    //            so the reply is context-aware and personalized every time.
+    // When OFF → pick a random pre-warmed ACK phrase for <5ms response time,
+    //            then compute the real reply in the background (setImmediate).
+    // -------------------------------------------------------------------------
+    if (env.USE_QUICK_REPLY_ACK) {
+      // Synchronous path: wait for LLM to generate a contextual quick reply,
+      // then synthesize it through the Federated TTS Router.
+      const quickText = await agent.generateQuickVoiceReply(userInput, effectiveGuestContext, {
+        timeoutMs: env.GROQ_TIMEOUT_BG_MS,
+      });
+      reqLogger.info({ quickText }, "quick_reply_ack_generated");
+
+      const tLlm = Date.now();
+      const cachedTts = getTtsCache(ttsKey(quickText));
+      const audioBuffer = cachedTts
+        ? Buffer.from(cachedTts.audioBase64, "base64")
+        : await agent.speak(quickText);
+      const tTts = Date.now();
+
+      // Cache for next time this same phrase is requested
+      const entry = { text: quickText, audioBase64: audioBuffer.toString("base64"), createdAt: Date.now() };
+      setVoiceCache(cacheKey, entry);
+      setTtsCache(ttsKey(quickText), entry);
+
+      reqLogger.info({ llm_ms: tLlm - t1, tts_ms: tTts - tLlm, total_ms: tTts - t0 }, "voice_fast_quick_reply_ack");
+
+      if (deviceId) {
+        const updatedHistory = [userInput, ...(effectiveGuestContext.history ?? [])].slice(0, 10);
+        await stateProvider.setUserPreferences(deviceId, {
+          name: effectiveGuestContext.name,
+          loyaltyPoints: effectiveGuestContext.loyaltyPoints,
+          history: updatedHistory,
+        });
+      }
+
+      return reply.send({
+        status: "ok",
+        mimeType: "audio/mpeg",
+        audioBase64: audioBuffer.toString("base64"),
+        text: quickText,
+        latencyMs: { llm: tLlm - t1, tts: tTts - tLlm, total: tTts - t0 },
+        cached: false,
+        fastIntent: false,
+        ack: false,
+      });
+    }
+
+    // Pre-warmed ACK path (USE_QUICK_REPLY_ACK=false): pick a random variation
+    // and respond instantly; compute the meaningful reply in the background.
+    const ackIdx = Math.floor(Math.random() * ACK_VARIATIONS.length);
+    const ack = getVoiceCache(`ack::${ackIdx}`);
     if (ack) {
       // Return ACK immediately and compute full response in background.
       setImmediate(async () => {

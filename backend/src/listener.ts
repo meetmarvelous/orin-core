@@ -10,6 +10,7 @@ import { createRequestLogger, logger } from "./shared/logger";
 import { stateProvider } from "./state";
 import { GuestContext } from "./ai_agent";
 import { getEnv } from "./config/env";
+import { RoomDeviceState } from "./state/IStateProvider";
 
 validateEnvOrExit();
 
@@ -135,6 +136,31 @@ export function startSecureGatewayListener(): number {
             { topic: IO_TOPICS.ROOM_CONTROL, payload: mqttPayload },
             "mqtt_publish_success"
           );
+
+          // Build and persist full room device snapshot to Redis.
+          // Both the api and listener processes share this state via stateProvider.
+          const COLOR_MAP: Record<string, string> = {
+            warm: "#FFB347",
+            cold: "#99CCFF",
+            ambient: "#FFFFFF",
+          };
+          const deviceSnapshot: RoomDeviceState = {
+            roomId: "Room_"+guestPda.slice(0,4),
+            hue: {
+              color: COLOR_MAP[payload.lighting] ?? "#FFFFFF",
+              brightness: typeof payload.brightness === "number" ? payload.brightness : 80,
+              on: true,
+            },
+            lighting: payload.lighting,
+            nest: {
+              target_temp_c: payload.temp,
+              mode: payload.temp >= 24 ? "COOL" : "HEAT",
+            },
+            music: payload.music ?? "",
+            lastUpdatedAt: new Date().toISOString(),
+            lastGuestPda: guestPda,
+          };
+          await stateProvider.setDeviceState(deviceSnapshot.roomId, deviceSnapshot);
 
           await stateProvider.setValidatedState({
             guestPda,
