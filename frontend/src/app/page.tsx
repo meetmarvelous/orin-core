@@ -46,6 +46,7 @@ import {
   LogOut,
   Activity,
   MessageSquare,
+  Camera,
 } from "lucide-react";
 import { cn } from "../lib/utils";
 
@@ -152,36 +153,36 @@ const LandingPage = ({ onConnect }: { onConnect: () => void }) => {
       animate="visible"
       className="min-h-screen flex flex-col items-center justify-center p-6 md:p-12 max-w-2xl mx-auto text-center"
     >
-      <motion.div variants={itemVariants} className="flex flex-col items-center space-y-8">
-        <Logo className="w-28 h-28 md:w-36 md:h-36" />
-        <div className="space-y-4">
-          <h1 className="text-6xl md:text-8xl font-light tracking-tighter font-serif">ORIN</h1>
-          <p className="text-accent font-mono text-[10px] md:text-xs uppercase tracking-[0.5em]">Your Personal AI Concierge</p>
-          <p className="text-zinc-400 text-lg md:text-xl font-light font-serif opacity-60">
+      <motion.div variants={itemVariants} className="flex flex-col items-center space-y-6 md:space-y-8">
+        <Logo className="w-24 h-24 md:w-36 md:h-36" />
+        <div className="space-y-3 md:space-y-4">
+          <h1 className="text-5xl xs:text-6xl md:text-8xl font-light tracking-tighter font-serif leading-none">ORIN</h1>
+          <p className="text-accent font-mono text-[9px] md:text-xs uppercase tracking-[0.4em] md:tracking-[0.5em]">Your Personal AI Concierge</p>
+          <p className="text-zinc-400 text-base md:text-xl font-light font-serif opacity-60 px-4">
             Every space knows your song.
           </p>
         </div>
       </motion.div>
 
-      <motion.div variants={itemVariants} className="w-full max-w-sm space-y-6 mt-12">
+      <motion.div variants={itemVariants} className="w-full max-w-[280px] xs:max-w-sm space-y-6 mt-10 md:mt-12">
         <div className="flex flex-col items-center gap-4">
-          <div className="[&>button]:w-full [&>button]:justify-center">
+          <div className="[&>button]:w-full [&>button]:justify-center [&>button]:h-12 md:[&>button]:h-14 [&>button]:rounded-xl md:[&>button]:rounded-2xl shadow-[0_0_30px_rgba(196,169,122,0.15)]">
             <WalletMultiButton />
           </div>
-          <p className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest">
+          <p className="text-zinc-600 text-[10px] font-mono uppercase tracking-widest px-8">
             Connect with Phantom or Coinbase
           </p>
         </div>
       </motion.div>
 
-      <motion.div variants={itemVariants} className="mt-16 grid grid-cols-3 gap-8 w-full max-w-lg">
+      <motion.div variants={itemVariants} className="mt-12 md:mt-16 grid grid-cols-1 xs:grid-cols-3 gap-6 md:gap-8 w-full max-w-lg">
         {[
           { icon: Brain, label: "AI Agent" },
-          { icon: Fingerprint, label: "On-Chain Identity" },
-          { icon: Shield, label: "Privacy First" },
+          { icon: Fingerprint, label: "Identity" },
+          { icon: Shield, label: "Privacy" },
         ].map((item) => (
-          <div key={item.label} className="flex flex-col items-center gap-3 opacity-40">
-            <item.icon size={20} className="text-accent" />
+          <div key={item.label} className="flex flex-col items-center gap-2 md:gap-3 opacity-40">
+            <item.icon className="w-[18px] h-[18px] md:w-5 md:h-5 text-accent" />
             <span className="text-[9px] font-mono uppercase tracking-widest text-zinc-500">{item.label}</span>
           </div>
         ))}
@@ -209,7 +210,7 @@ const OnboardingFlow = ({ onComplete, onBack }: { onComplete: (name: string) => 
       icon: Brain,
       title: "How it works",
       desc: "Tell ORIN what you want, by voice or text. It learns your preferences and adjusts your space automatically.",
-      detail: "target_temp_c, lighting, music. All personalized, all remembered.",
+      detail: "Climate, lighting, music. All personalized, all remembered.",
     },
     {
       icon: Fingerprint,
@@ -237,17 +238,17 @@ const OnboardingFlow = ({ onComplete, onBack }: { onComplete: (name: string) => 
       variants={containerVariants}
       initial="hidden"
       animate="visible"
-      className="min-h-screen flex flex-col items-center justify-center p-6 max-w-lg mx-auto"
+      className="min-h-screen flex flex-col items-center justify-center p-6 xs:p-10 max-w-lg mx-auto relative overflow-hidden"
     >
       {/* Back Button */}
       <button
         onClick={handleBack}
         className="absolute top-6 left-6 flex items-center gap-2 text-zinc-500 hover:text-accent transition-colors z-50 group"
       >
-        <div className="w-9 h-9 rounded-full bg-zinc-900/50 border border-zinc-800 flex items-center justify-center group-hover:border-accent/40 transition-all">
+        <div className="w-10 h-10 rounded-full bg-zinc-900/50 border border-zinc-800 flex items-center justify-center group-hover:border-accent/40 transition-all">
           <ChevronLeft size={18} />
         </div>
-        <span className="text-[10px] font-mono uppercase tracking-widest hidden sm:inline">Back</span>
+        <span className="text-[10px] font-mono uppercase tracking-[0.2em] hidden xs:inline">Back</span>
       </button>
 
       <AnimatePresence mode="wait">
@@ -257,35 +258,34 @@ const OnboardingFlow = ({ onComplete, onBack }: { onComplete: (name: string) => 
             initial={{ opacity: 0, x: 50 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -50 }}
-            className="w-full text-center space-y-8"
+            className="w-full text-center space-y-6 md:space-y-8"
           >
-            {/* Logo at top of every slide */}
-            <Logo className="w-10 h-10 mx-auto opacity-30" />
+            <Logo className="w-8 h-8 mx-auto opacity-30" />
 
-            <div className="w-20 h-20 rounded-3xl bg-accent/10 flex items-center justify-center text-accent mx-auto">
-              {React.createElement(slides[step].icon, { size: 32 })}
+            <div className="w-16 h-16 md:w-20 md:h-20 rounded-3xl bg-accent/10 flex items-center justify-center text-accent mx-auto">
+              {React.createElement(slides[step].icon, { size: 28 })}
             </div>
-            <div className="space-y-4">
-              <h2 className="text-4xl font-light font-serif">{slides[step].title}</h2>
-              <p className="text-zinc-400 text-base leading-relaxed">{slides[step].desc}</p>
-              <p className="text-accent/50 font-mono text-[10px] uppercase tracking-widest">{slides[step].detail}</p>
+            <div className="space-y-3 md:space-y-4 px-2">
+              <h2 className="text-3xl md:text-4xl font-light font-serif leading-tight">{slides[step].title}</h2>
+              <p className="text-zinc-400 text-sm md:text-base leading-relaxed">{slides[step].desc}</p>
+              <p className="text-accent/50 font-mono text-[9px] md:text-[10px] uppercase tracking-widest">{slides[step].detail}</p>
             </div>
 
             {/* Progress dots */}
-            <div className="flex gap-2 justify-center pt-4">
+            <div className="flex gap-2 justify-center pt-2 md:pt-4">
               {slides.map((_, i) => (
                 <div key={i} className={cn(
-                  "w-2 h-2 rounded-full transition-all",
-                  i === step ? "bg-accent w-6" : "bg-zinc-800"
+                  "w-1.5 h-1.5 rounded-full transition-all",
+                  i === step ? "bg-accent w-5" : "bg-zinc-800"
                 )} />
               ))}
             </div>
 
             <button
               onClick={() => setStep(step + 1)}
-              className="bg-accent text-black px-8 py-3 rounded-xl font-medium hover:bg-accent-light transition-all accent-glow text-sm"
+              className="w-full xs:w-auto bg-accent text-black px-10 py-3.5 md:py-3 rounded-xl font-bold md:font-medium hover:bg-accent-light transition-all accent-glow text-sm"
             >
-              {step < 2 ? "Next" : "Set Up Profile"} <ArrowRight size={14} className="inline ml-1" />
+              {step < 2 ? "Continue" : "Register Identity"} <ArrowRight size={14} className="inline ml-1" />
             </button>
           </motion.div>
         ) : (
@@ -293,26 +293,26 @@ const OnboardingFlow = ({ onComplete, onBack }: { onComplete: (name: string) => 
             key="register"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="w-full space-y-8"
+            className="w-full space-y-8 px-2"
           >
             <div className="text-center space-y-4">
-              <Logo className="w-16 h-16 mx-auto" />
-              <h2 className="text-3xl font-light font-serif">What should we call you?</h2>
-              <p className="text-zinc-500 text-sm">
-                This name will be linked to your wallet identity on Solana.
+              <Logo className="w-12 h-12 md:w-16 md:h-16 mx-auto" />
+              <h2 className="text-3xl font-light font-serif leading-tight">Identity Registration</h2>
+              <p className="text-zinc-500 text-sm leading-relaxed px-4">
+                What should we call you? This name will be encrypted onto your Solana identity.
               </p>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-zinc-500 text-[10px] font-mono uppercase tracking-widest">Your Name</label>
+            <div className="space-y-3">
+              <label className="text-zinc-500 text-[9px] font-mono uppercase tracking-[0.2em] ml-1">Legal Name / Alias</label>
               <input
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter" && name.trim()) onComplete(name.trim()); }}
-                placeholder="e.g. Shalom"
+                placeholder="e.g. Satoshi"
                 autoFocus
-                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-3 px-4 text-sm focus:outline-none focus:border-accent/50 transition-colors"
+                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-4 px-4 text-base md:text-sm focus:outline-none focus:border-accent/50 transition-colors shadow-inner"
               />
             </div>
 
@@ -320,13 +320,13 @@ const OnboardingFlow = ({ onComplete, onBack }: { onComplete: (name: string) => 
               onClick={() => { if (name.trim()) onComplete(name.trim()); }}
               disabled={!name.trim()}
               className={cn(
-                "w-full py-4 rounded-xl font-bold transition-all text-sm",
+                "w-full py-4.5 md:py-4 rounded-xl font-bold transition-all text-sm md:text-base",
                 name.trim()
-                  ? "bg-accent text-black accent-glow hover:scale-[1.02] active:scale-[0.98]"
+                  ? "bg-accent text-black accent-glow shadow-[0_0_20px_rgba(196,169,122,0.2)]"
                   : "bg-zinc-900 text-zinc-600 cursor-not-allowed"
               )}
             >
-              Create ORIN Identity →
+              Initialize Identity →
             </button>
           </motion.div>
         )}
@@ -365,6 +365,24 @@ const Dashboard = ({
   const [isRecording, setIsRecording] = useState(false);
   const [nestMode, setNestMode] = useState("HEAT");
   const [hueColor, setHueColor] = useState("#C4A97A");
+  const [isProcessingVoice, setIsProcessingVoice] = useState(false);
+  const [theme, setTheme] = useState<"dark" | "light">("dark");
+
+  // Load theme from local storage
+  useEffect(() => {
+    const savedTheme = localStorage.getItem("orin_theme") as "dark" | "light";
+    if (savedTheme) {
+      setTheme(savedTheme);
+      document.documentElement.classList.toggle("light", savedTheme === "light");
+    }
+  }, []);
+
+  const toggleTheme = () => {
+    const newTheme = theme === "dark" ? "light" : "dark";
+    setTheme(newTheme);
+    localStorage.setItem("orin_theme", newTheme);
+    document.documentElement.classList.toggle("light", newTheme === "light");
+  };
 
   // Anti-Flicker Guard: Prevents stale ground-truth from overwriting recent user changes
   const lastInteractionRef = useRef<number>(0);
@@ -372,6 +390,30 @@ const Dashboard = ({
   const [chatMessages, setChatMessages] = useState<Array<{role: "user" | "orin"; text: string}>>([
     { role: "orin", text: `Welcome, ${guestName}. I'm ORIN, your personal AI concierge. How can I help you today?` },
   ]);
+  const [profileImage, setProfileImage] = useState<string | null>(null);
+
+  // Load profile image from local storage on mount
+  useEffect(() => {
+    const savedImg = localStorage.getItem(`orin_profile_img_${walletAddress}`);
+    if (savedImg) setProfileImage(savedImg);
+  }, [walletAddress]);
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 1024 * 1024) { // 1MB limit for local storage reliability
+        alert("Image too large. Please select an image under 1MB.");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64String = reader.result as string;
+        setProfileImage(base64String);
+        localStorage.setItem(`orin_profile_img_${walletAddress}`, base64String);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
   const [chatInput, setChatInput] = useState("");
   const [activeRequests, setActiveRequests] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
@@ -485,8 +527,15 @@ const Dashboard = ({
     }
   }, [profileData, walletAddress, guestPda, wallet, setProfileData]);
 
+  const handleTextSend = () => {
+    if (!chatInput.trim()) return;
+    handleVoiceCommand(chatInput.trim());
+    setChatInput("");
+  };
+
   const handleVoiceCommand = async (text: string) => {
     if (!text.trim() || !wallet.publicKey) return;
+    setIsProcessingVoice(true);
     
     setChatInput("");
     // Push the text to UI instantly if it wasn't already pushed by the audio transcriber
@@ -585,6 +634,7 @@ const Dashboard = ({
         return newMsgs;
       });
     } finally {
+      setIsProcessingVoice(false);
       refreshGroundTruth();
     }
   };
@@ -610,8 +660,8 @@ const Dashboard = ({
         },
         guestName
       );
-      const sigText = res.solanaTxSignature ? `\nSignature: ${res.solanaTxSignature.slice(0,10)}...` : ``;
-      alert(`Success: Environment applied.${sigText}`);
+      const sigText = res.solanaTxSignature ? `\n\nTX Signature: ${res.solanaTxSignature.slice(0,12)}...` : ``;
+      alert(`Success: Environment preferences synchronized.\n\nTransaction was subsidized by ORIN Relay (Gasless).${sigText}`);
     } catch (e: any) {
       alert(`Error saving setup: ${e.message}`);
     } finally {
@@ -651,6 +701,9 @@ const Dashboard = ({
     alert("Checkout UI Active. Requesting endpoint from backend...");
     // This will be wired up once the backend dev provides the endpoint.
   };
+
+  const startRecording = () => setIsRecording(true);
+  const stopRecording = () => setIsRecording(false);
 
   useEffect(() => {
     let active = true;
@@ -801,18 +854,18 @@ const Dashboard = ({
       {/* Environmental Data */}
       <motion.div variants={itemVariants}>
         <p className="text-zinc-500 text-[10px] font-mono uppercase tracking-widest mb-3">Environment</p>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
             { icon: Thermometer, label: "Climate", value: `${target_temp_c}°C · ${nestMode}`, color: "text-accent" },
             { icon: Lightbulb, label: "Lighting", value: lightingMode, color: "text-accent" },
             { icon: Music, label: "Ambient", value: musicOn ? "Playing" : "Off", color: "text-accent" },
             { icon: Shield, label: "Privacy", value: "Active", color: "text-emerald-500" },
           ].map((item) => (
-            <Card key={item.label} className="space-y-3 p-4">
-              <item.icon size={18} className={item.color} />
+            <Card key={item.label} className="space-y-2 md:space-y-3 p-3 md:p-4">
+              <item.icon size={16} className={item.color} />
               <div>
-                <p className="text-zinc-500 text-[9px] uppercase tracking-widest">{item.label}</p>
-                <p className="font-bold text-lg capitalize">{item.value}</p>
+                <p className="text-zinc-500 text-[8px] md:text-[9px] uppercase tracking-widest leading-tight">{item.label}</p>
+                <p className="font-bold text-base md:text-lg capitalize">{item.value}</p>
               </div>
             </Card>
           ))}
@@ -822,23 +875,23 @@ const Dashboard = ({
       {/* Quick Actions */}
       <motion.div variants={itemVariants}>
         <p className="text-zinc-500 text-[10px] font-mono uppercase tracking-widest mb-3">Quick Actions</p>
-        <div className="grid grid-cols-2 gap-3">
-          <Card onClick={() => setActiveTab("assistant")} className="flex items-center gap-4 p-5 group hover:border-accent/30 transition-all">
-            <div className="w-12 h-12 rounded-2xl bg-accent/10 flex items-center justify-center text-accent group-hover:bg-accent group-hover:text-black transition-all duration-500">
-              <MessageSquare size={22} />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Card onClick={() => setActiveTab("assistant")} className="flex items-center gap-4 p-4 md:p-5 group hover:border-accent/30 transition-all cursor-pointer">
+            <div className="w-10 h-10 md:w-12 md:h-12 rounded-2xl bg-accent/10 flex items-center justify-center text-accent group-hover:bg-accent group-hover:text-black transition-all duration-500 flex-shrink-0">
+              <MessageSquare className="w-5 h-5 md:w-[22px] md:h-[22px]" />
             </div>
             <div>
               <h4 className="font-bold text-sm">Talk to ORIN</h4>
-              <p className="text-zinc-500 text-xs">Voice or text</p>
+              <p className="text-zinc-500 text-[10px] md:text-xs">Voice or text</p>
             </div>
           </Card>
-          <Card onClick={() => setActiveTab("control")} className="flex items-center gap-4 p-5 group hover:border-accent/30 transition-all">
-            <div className="w-12 h-12 rounded-2xl bg-accent/10 flex items-center justify-center text-accent group-hover:bg-accent group-hover:text-black transition-all duration-500">
-              <Zap size={22} />
+          <Card onClick={() => setActiveTab("control")} className="flex items-center gap-4 p-4 md:p-5 group hover:border-accent/30 transition-all cursor-pointer">
+            <div className="w-10 h-10 md:w-12 md:h-12 rounded-2xl bg-accent/10 flex items-center justify-center text-accent group-hover:bg-accent group-hover:text-black transition-all duration-500 flex-shrink-0">
+              <Zap className="w-5 h-5 md:w-[22px] md:h-[22px]" />
             </div>
             <div>
               <h4 className="font-bold text-sm">Room Control</h4>
-              <p className="text-zinc-500 text-xs">Manual adjustments</p>
+              <p className="text-zinc-500 text-[10px] md:text-xs">Manual adjustments</p>
             </div>
           </Card>
         </div>
@@ -871,96 +924,86 @@ const Dashboard = ({
       variants={containerVariants}
       initial="hidden"
       animate="visible"
-      className="flex flex-col h-[calc(100svh-140px)] md:h-[calc(100vh-160px)]"
+      className="flex flex-col h-[calc(100dvh-150px)] md:h-[calc(100vh-160px)]"
     >
-      <motion.div variants={itemVariants} className="flex items-center justify-between mb-3 py-1 border-b border-zinc-900/30">
+      <motion.div variants={itemVariants} className="flex items-center justify-between mb-2 pb-2 border-b border-zinc-900/30">
         <div>
           <h2 className="text-lg md:text-xl font-light font-serif">ORIN Assistant</h2>
           <p className="text-zinc-500 text-[10px] font-mono uppercase tracking-widest">AI Concierge</p>
         </div>
-        <StatusBadge active={true} label="Live" />
+        <div className="flex items-center gap-2">
+           <StatusBadge active={true} label={isRecording ? "Recording" : "Live"} />
+        </div>
       </motion.div>
 
       {/* Chat Messages */}
-      <div className="flex-1 overflow-y-auto space-y-4 no-scrollbar pb-4 pr-1">
+      <div className="flex-1 overflow-y-auto space-y-4 no-scrollbar pb-6 px-1">
         {chatMessages.map((msg, i) => (
           <motion.div
             key={i}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
+            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
             transition={{ delay: i * 0.05 }}
-            className={cn("flex gap-3", msg.role === "user" && "justify-end")}
+            className={cn("flex", msg.role === "user" ? "justify-end" : "justify-start")}
           >
-            {msg.role === "orin" && (
-              <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center text-accent shrink-0">
-                <Brain size={16} />
-              </div>
-            )}
             <div className={cn(
-              "p-4 rounded-2xl max-w-[80%]",
+              "px-4 py-3 rounded-2xl max-w-[85%] shadow-lg",
               msg.role === "orin"
-                ? "bg-emerald-500/5 border border-emerald-500/10 rounded-tl-none"
-                : "bg-accent text-[#332F2E] rounded-tr-none"
+                ? "bg-zinc-900 border border-zinc-800 text-zinc-100 rounded-tl-none font-light leading-relaxed"
+                : "bg-accent text-[#332F2E] font-medium rounded-tr-none"
             )}>
-              <p className="text-sm">{msg.text}</p>
+              <p className="text-sm md:text-base">{msg.text}</p>
             </div>
           </motion.div>
         ))}
+        {isProcessingVoice && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
+            <div className="flex gap-1.5 px-4 py-3 bg-zinc-900/50 rounded-2xl">
+              {[0, 1, 2].map(i => (
+                <motion.div
+                  key={i}
+                  animate={{ y: [0, -4, 0] }}
+                  transition={{ duration: 0.6, repeat: Infinity, delay: i * 0.15 }}
+                  className="w-1.5 h-1.5 rounded-full bg-accent/40"
+                />
+              ))}
+            </div>
+          </motion.div>
+        )}
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Voice / Text Input */}
-      <motion.div variants={itemVariants} className="pt-4 border-t border-zinc-900">
-        <div className="flex flex-col md:flex-row md:items-center gap-4 lg:gap-6">
-          {/* Voice Toggle */}
-          <div className="flex items-center gap-3 justify-center md:justify-start shrink-0">
-            <button
-              onClick={() => setIsRecording(!isRecording)}
-              className={cn(
-                "w-12 h-12 md:w-11 md:h-11 rounded-full flex items-center justify-center transition-all",
-                isRecording
-                  ? "bg-red-500 text-white animate-pulse shadow-[0_0_20px_rgba(239,68,68,0.4)]"
-                  : "bg-accent/10 border border-accent/30 text-accent hover:bg-accent/20"
-              )}
-            >
-              {isRecording ? <MicOff size={20} /> : <Mic size={20} />}
-            </button>
-            {isRecording && (
-              <motion.p
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="text-red-400 text-[10px] font-mono uppercase tracking-widest"
-              >
-                Listening...
-              </motion.p>
+      {/* Input Area — Fixed at bottom of container */}
+      <motion.div variants={itemVariants} className="pt-3 border-t border-zinc-900 -mx-1">
+        <div className="flex items-center gap-2 bg-zinc-900/50 rounded-2xl p-1.5 border border-zinc-800 focus-within:border-accent/40 transition-all">
+          <input
+            type="text"
+            placeholder="Tell ORIN..."
+            value={chatInput}
+            onChange={(e) => setChatInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && chatInput.trim()) {
+                handleTextSend();
+              }
+            }}
+            className="flex-1 bg-transparent border-none outline-none px-3 text-sm md:text-base"
+          />
+          <button
+            onClick={isRecording ? stopRecording : startRecording}
+            className={cn(
+              "p-2.5 rounded-xl transition-all",
+              isRecording ? "bg-red-500 text-white animate-pulse" : "text-zinc-500 hover:text-accent hover:bg-accent/10"
             )}
-          </div>
-
-          {/* Text Input */}
-          <div className="relative flex-1">
-            <input
-              type="text"
-              placeholder="Tell ORIN what you want..."
-              value={chatInput}
-              onChange={(e) => setChatInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && chatInput.trim()) {
-                  handleVoiceCommand(chatInput);
-                }
-              }}
-              className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-3.5 pl-5 pr-14 text-sm focus:outline-none focus:border-accent/50 transition-colors"
-            />
-            <button
-              onClick={() => {
-                if (chatInput.trim()) {
-                  handleVoiceCommand(chatInput);
-                }
-              }}
-              className="absolute right-1.5 top-1.5 w-8 h-8 md:w-9 md:h-9 rounded-lg bg-accent flex items-center justify-center text-[#332F2E] hover:bg-accent-light transition-colors"
-            >
-              <Send size={16} />
-            </button>
-          </div>
+          >
+            {isRecording ? <MicOff size={18} /> : <Mic size={18} />}
+          </button>
+          <button
+            onClick={handleTextSend}
+            disabled={!chatInput.trim()}
+            className="p-2.5 bg-accent text-[#332F2E] rounded-xl hover:scale-105 active:scale-95 transition-all disabled:opacity-30 flex-shrink-0"
+          >
+            <Send size={18} />
+          </button>
         </div>
       </motion.div>
     </motion.div>
@@ -975,14 +1018,14 @@ const Dashboard = ({
       className="space-y-6"
     >
       <motion.div variants={itemVariants}>
-        <h2 className="text-2xl font-light font-serif">Room Control</h2>
-        <p className="text-zinc-500 text-xs font-mono uppercase tracking-widest">Manual environment adjustments</p>
+        <h2 className="text-xl md:text-2xl font-light font-serif">Room Control</h2>
+        <p className="text-zinc-500 text-[10px] font-mono uppercase tracking-widest">Manual environment adjustments</p>
       </motion.div>
 
       {/* Scene Presets */}
       <motion.div variants={itemVariants}>
         <p className="text-zinc-500 text-[10px] font-mono uppercase tracking-widest mb-3">Scene Presets</p>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-3 gap-2 md:gap-4">
           {[
             { name: "Relax", icon: Moon, temp: 23, bright: 40, light: "warm" as const },
             { name: "Focus", icon: Zap, temp: 21, bright: 85, light: "cold" as const },
@@ -996,63 +1039,58 @@ const Dashboard = ({
                 setLightingMode(scene.light);
               }}
               className={cn(
-                "flex flex-col items-center gap-3 p-4 transition-all",
-                lightingMode === scene.light ? "border-accent bg-accent/10" : "hover:bg-zinc-900/50"
+                "flex flex-col items-center gap-2 md:gap-3 p-3 md:p-5 transition-all cursor-pointer",
+                lightingMode === scene.light ? "border-accent bg-accent/10 shadow-[0_0_15px_rgba(196,169,122,0.1)]" : "hover:bg-zinc-900/50"
               )}
             >
-              <scene.icon size={20} className="text-accent" />
-              <span className="font-bold text-xs">{scene.name}</span>
+              <scene.icon size={20} className={lightingMode === scene.light ? "text-accent" : "text-zinc-500"} />
+              <span className={cn("font-bold text-[10px] md:text-xs uppercase tracking-widest", lightingMode === scene.light ? "text-accent" : "text-zinc-400")}>
+                {scene.name}
+              </span>
             </Card>
           ))}
         </div>
       </motion.div>
 
-      {/* target_temp_c */}
-      <motion.div variants={itemVariants}>
-        <Card className="space-y-4 p-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3 text-accent">
-              <Thermometer size={20} />
-              <span className="font-bold text-base">target_temp_c</span>
+      {/* Temperature & Brightness — Combined for better vertical scrolling */}
+      <motion.div variants={itemVariants} className="space-y-4">
+        <Card className="p-4 md:p-6 space-y-4 md:space-y-6">
+          {/* Temp Control */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3 text-accent">
+                <Thermometer size={18} />
+                <span className="font-bold text-sm md:text-base uppercase tracking-wider">Climate</span>
+              </div>
+              <span className="text-xl md:text-2xl font-mono font-bold">{target_temp_c}°C</span>
             </div>
-            <span className="text-2xl font-mono font-bold">{target_temp_c}°C</span>
+            <div className="pt-2 px-1">
+              <input
+                type="range" min={16} max={30} step={0.5} value={target_temp_c}
+                onChange={(e) => setTargetTempC(parseFloat(e.target.value))}
+                className="w-full accent-accent h-2 rounded-lg cursor-pointer bg-zinc-800 appearance-none"
+              />
+            </div>
           </div>
-          <input
-            type="range" min={16} max={30} step={0.5} value={target_temp_c}
-            onChange={(e) => setTargetTempC(parseFloat(e.target.value))}
-            className="w-full accent-[#C4A97A]"
-          />
-        </Card>
-      </motion.div>
 
-      {/* Brightness */}
-      <motion.div variants={itemVariants}>
-        <Card className="space-y-4 p-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3 text-accent">
-              <Lightbulb size={20} />
-              <span className="font-bold text-base">Brightness</span>
+          <div className="h-px bg-zinc-900/50 mx-2" />
+
+          {/* Brightness Control */}
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3 text-accent">
+                <Lightbulb size={18} />
+                <span className="font-bold text-sm md:text-base uppercase tracking-wider">Brightness</span>
+              </div>
+              <span className="text-xl md:text-2xl font-mono font-bold">{brightness}%</span>
             </div>
-            <span className="text-2xl font-mono font-bold">{brightness}%</span>
-          </div>
-          <input
-            type="range" min={0} max={100} step={1} value={brightness}
-            onChange={(e) => setBrightness(parseInt(e.target.value))}
-            className="w-full accent-[#C4A97A]"
-          />
-          <div className="grid grid-cols-3 gap-2">
-            {(["warm", "cold", "ambient"] as const).map((mode) => (
-              <button
-                key={mode}
-                onClick={() => setLightingMode(mode)}
-                className={cn(
-                  "text-[10px] font-mono uppercase tracking-widest py-2.5 rounded-xl transition-all",
-                  lightingMode === mode ? "bg-accent text-black font-bold" : "bg-zinc-900/50 text-zinc-500 hover:bg-zinc-800"
-                )}
-              >
-                {mode}
-              </button>
-            ))}
+            <div className="pt-2 px-1">
+              <input
+                type="range" min={0} max={100} step={1} value={brightness}
+                onChange={(e) => setBrightness(parseInt(e.target.value))}
+                className="w-full accent-accent h-2 rounded-lg cursor-pointer bg-zinc-800 appearance-none"
+              />
+            </div>
           </div>
         </Card>
       </motion.div>
@@ -1091,18 +1129,23 @@ const Dashboard = ({
       </motion.div>
 
       {/* Save Button */}
-      <motion.div variants={itemVariants}>
+      <motion.div variants={itemVariants} className="relative">
         <button
           onClick={handleSaveSetup}
           disabled={isSaving}
           className={cn(
-            "w-full py-4 rounded-xl font-bold transition-all text-sm",
+            "w-full py-4 rounded-xl font-bold transition-all text-sm relative overflow-hidden group",
             isSaving
               ? "bg-zinc-900 text-zinc-600 cursor-not-allowed"
               : "bg-accent text-black accent-glow hover:scale-[1.02] active:scale-[0.98]"
           )}
         >
-          {isSaving ? "Saving to blockchain..." : "Save my setup →"}
+          {isSaving ? "Syncing to Solana..." : "Save my setup →"}
+          {!isSaving && (
+            <div className="absolute top-0 right-0 bg-black/10 px-2 py-0.5 text-[8px] uppercase tracking-tighter rounded-bl-lg font-mono">
+              Gasless Sync
+            </div>
+          )}
         </button>
       </motion.div>
     </motion.div>
@@ -1118,8 +1161,18 @@ const Dashboard = ({
     >
       <motion.div variants={itemVariants}>
         <Card className="bg-zinc-900/50 border-zinc-800 p-8 flex flex-col items-center space-y-4">
-          <div className="w-24 h-24 rounded-full bg-accent/10 flex items-center justify-center text-accent text-4xl font-bold">
-            {guestName.charAt(0).toUpperCase()}
+          <div className="relative group">
+            <div className="w-24 h-24 rounded-full bg-accent/10 border-2 border-accent/20 flex items-center justify-center text-accent text-4xl font-bold overflow-hidden">
+              {profileImage ? (
+                <img src={profileImage} alt="Profile" className="w-full h-full object-cover" />
+              ) : (
+                guestName.charAt(0).toUpperCase()
+              )}
+            </div>
+            <label className="absolute bottom-0 right-0 w-8 h-8 rounded-full bg-accent text-black flex items-center justify-center cursor-pointer shadow-lg hover:scale-110 active:scale-95 transition-all opacity-0 group-hover:opacity-100">
+              <Camera size={16} />
+              <input type="file" accept="image/*" className="hidden" onChange={handleImageChange} />
+            </label>
           </div>
           <div className="text-center space-y-1">
             <h3 className="text-2xl font-bold">{guestName}</h3>
@@ -1233,25 +1286,44 @@ const Dashboard = ({
   ];
 
   return (
-    <div className="min-h-screen bg-background text-white flex flex-col">
-      {/* Top Bar */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-900/50">
-        <div className="flex items-center gap-3">
-          <Logo className="w-8 h-8" />
+    <div className="min-h-screen bg-background text-white flex flex-col overflow-hidden">
+      {/* Top Bar — Refactored for Mobile */}
+      <div className="flex items-center justify-between px-4 py-3 md:px-6 md:py-4 border-b border-zinc-900/50 flex-shrink-0 bg-background/80 backdrop-blur-md z-[60]">
+        <div className="flex items-center gap-2 md:gap-3">
+          <Logo className="w-7 h-7 md:w-8 md:h-8" />
           <div className="flex flex-col">
-            <span className="text-white/80 text-sm font-bold uppercase tracking-wider leading-none">ORIN</span>
-            <span className="text-accent font-mono text-[9px] uppercase tracking-widest mt-0.5 animate-pulse">
+            <span className="text-white/80 text-[10px] md:text-sm font-bold uppercase tracking-wider leading-none">ORIN</span>
+            <span className="text-accent font-mono text-[8px] md:text-[9px] uppercase tracking-widest mt-0.5 animate-pulse truncate max-w-[80px] md:max-w-none">
               {guestPda ? `ROOM_${guestPda.toBase58().slice(0, 4)}` : "ROOM_INIT"}
             </span>
           </div>
         </div>
-        <StatusBadge active={true} label="ORIN Active" />
+        
+        <div className="flex items-center gap-2 md:gap-3">
+          <button
+            onClick={toggleTheme}
+            className="p-2 rounded-xl bg-zinc-900/50 border border-zinc-800 text-zinc-400 hover:text-accent hover:border-accent/30 transition-all flex items-center justify-center"
+            title={theme === "dark" ? "Switch to Light Mode" : "Switch to Dark Mode"}
+          >
+            {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
+          </button>
+          <div className="hidden xs:block">
+            <StatusBadge active={true} label="ORIN Active" />
+          </div>
+          <button
+            onClick={onLogout}
+            className="p-1.5 md:p-2 text-zinc-500 hover:text-white transition-colors"
+            title="Sign Out"
+          >
+            <LogOut size={18} />
+          </button>
+        </div>
       </div>
 
-      {/* Content */}
+      {/* Main Content Area — Viewport Hardened */}
       <div className={cn(
-        "flex-1 max-w-2xl mx-auto w-full no-scrollbar",
-        activeTab === "assistant" ? "h-full overflow-hidden flex flex-col px-6" : "overflow-y-auto p-6 pb-24"
+        "flex-1 max-w-2xl mx-auto w-full no-scrollbar relative",
+        activeTab === "assistant" ? "h-[calc(100dvh-120px)] md:h-full overflow-hidden flex flex-col px-4 md:px-6" : "overflow-y-auto p-4 md:p-6 pb-24"
       )}>
         <AnimatePresence mode="wait">
           <motion.div
@@ -1266,24 +1338,26 @@ const Dashboard = ({
         </AnimatePresence>
       </div>
 
-      {/* Bottom Nav */}
-      <div className="fixed bottom-0 left-0 right-0 bg-background/90 backdrop-blur-xl border-t border-zinc-900/50 px-6 py-3 z-50">
-        <div className="flex justify-around max-w-2xl mx-auto">
+      {/* Bottom Nav — Refined for Premium Mobile Feel */}
+      <div className="fixed bottom-0 left-0 right-0 bg-background/80 backdrop-blur-2xl border-t border-zinc-900/50 pb-safe z-[60]">
+        <div className="flex justify-around items-center max-w-2xl mx-auto px-4 py-2 md:py-3">
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={cn(
-                "flex flex-col items-center gap-1.5 transition-all relative group py-1",
+                "flex flex-col items-center gap-1.5 transition-all relative group py-2 md:py-1 px-4 rounded-2xl active:bg-accent/5",
                 activeTab === tab.id ? "text-accent" : "text-zinc-500 hover:text-zinc-300"
               )}
             >
-              <tab.icon size={20} className={cn("transition-transform", activeTab === tab.id && "scale-110")} />
-              <span className="text-[9px] font-mono uppercase tracking-widest">{tab.label}</span>
+              <tab.icon size={20} className={cn("transition-all duration-300", activeTab === tab.id ? "scale-110 drop-shadow-[0_0_8px_rgba(196,169,122,0.4)]" : "group-hover:scale-110")} />
+              <span className={cn("text-[8px] md:text-[9px] font-mono uppercase tracking-[0.2em] transition-all", activeTab === tab.id ? "opacity-100" : "opacity-60")}>
+                {tab.label}
+              </span>
               {activeTab === tab.id && (
                 <motion.div
                   layoutId="activeTab"
-                  className="absolute -bottom-1 w-1.5 h-1.5 rounded-full bg-accent shadow-[0_0_8px_rgba(196,169,122,0.6)]"
+                  className="absolute -bottom-0.5 w-1 h-1 rounded-full bg-accent shadow-[0_0_12px_rgba(196,169,122,0.8)]"
                 />
               )}
             </button>
@@ -1426,7 +1500,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-background text-white selection:bg-accent selection:text-black">
+    <div className="min-h-screen bg-background text-text-primary selection:bg-accent selection:text-black">
       <AnimatePresence mode="wait">
         {view === "landing" && (
           <motion.div key="landing" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>

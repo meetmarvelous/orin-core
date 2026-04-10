@@ -1,15 +1,40 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&family=Outfit:wght@100..900&display=swap');
 @import "tailwindcss";
 
+:root {
+  --background: #332F2E;
+  --card: #3f3b3a;
+  --card-hover: #4a4645;
+  --accent: #C4A97A;
+  --accent-light: #FFE0B2;
+  --accent-muted: #80663C;
+  --border: #4d4948;
+  --text-primary: #ffffff;
+  --text-secondary: #a1a1aa;
+}
+
+.light {
+  --background: #F8F5F2;
+  --card: #ffffff;
+  --card-hover: #f1ede8;
+  --accent: #B28E4D;
+  --accent-light: #DFC59B;
+  --accent-muted: #7A5F33;
+  --border: #e2deda;
+  --text-primary: #332F2E;
+  --text-secondary: #71717a;
+}
+
 @theme {
-  --color-background: #332F2E;
-  --color-card: #3f3b3a;
-  --color-card-hover: #4a4645;
-  --color-accent: #C4A97A;
-  --color-accent-light: #FFE0B2;
-  --color-accent-muted: #80663C;
-  --color-border: #4d4948;
-  --color-text-secondary: #a1a1aa;
+  --color-background: var(--background);
+  --color-card: var(--card);
+  --color-card-hover: var(--card-hover);
+  --color-accent: var(--accent);
+  --color-accent-light: var(--accent-light);
+  --color-accent-muted: var(--accent-muted);
+  --color-border: var(--border);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
   --font-serif: "Outfit", sans-serif;
   --font-mono: "Inter", sans-serif;
 }
