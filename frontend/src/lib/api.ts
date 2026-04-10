@@ -10,7 +10,12 @@ export interface GuestContext {
   name: string;
   loyaltyPoints: number;
   history: string[];
-  currentPreferences?: any;
+  currentPreferences?: {
+    temp: number;
+    lighting: "warm" | "cold" | "ambient";
+    brightness: number;
+    musicOn: boolean;
+  };
 }
 
 export interface VoiceCommandRequest {
@@ -194,6 +199,7 @@ export async function fetchFastVoiceReply(payload: {
   audioBase64: string;
   text?: string;
   fastIntent?: boolean;
+  aiResult?: any;
 }> {
   const response = await fetch(`${API_BASE}/api/v1/voice-fast`, {
     method: "POST",
@@ -207,6 +213,35 @@ export async function fetchFastVoiceReply(payload: {
   if (!response.ok) {
     const errorBody = await response.text();
     throw new Error(`Fast Voice API error (${response.status}): ${errorBody}`);
+  }
+
+  return response.json();
+}
+
+export interface DeviceStatus {
+  temp: number;
+  lighting: "warm" | "cold" | "ambient";
+  brightness: number;
+  musicOn: boolean;
+  musicTrack?: string;
+  guestPda: string;
+}
+
+/**
+ * GET /api/v1/device/status?guestPda=<YOUR_PDA>
+ * Fetches the current live state of the room devices for a specific guest.
+ */
+export async function fetchDeviceStatus(guestPda: string): Promise<DeviceStatus> {
+  const response = await fetch(`${API_BASE}/api/v1/device/status?guestPda=${guestPda}`, {
+    method: "GET",
+    headers: {
+      "X-API-KEY": API_KEY,
+    },
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`Device status API error (${response.status}): ${errorBody}`);
   }
 
   return response.json();

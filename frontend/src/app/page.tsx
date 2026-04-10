@@ -11,7 +11,7 @@
  * - Real blockchain integration via Hash-Lock workflow
  */
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import dynamic from "next/dynamic";
 import {
@@ -52,9 +52,9 @@ import { cn } from "../lib/utils";
 // Wallet & Solana Hooks
 import { useWallet, useAnchorWallet } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";
-import { transcribeAudio, fetchFastVoiceReply } from "../lib/api";
+import { transcribeAudio, fetchFastVoiceReply, fetchDeviceStatus } from "../lib/api";
 import { saveManualPreferences, saveVoicePreferences, getRelayOpts } from "../lib/savePreferences";
-import { getProgram, getProvider, initializeGuestOnChain, fetchGuestProfile } from "../lib/solana";
+import { getProgram, getProvider, initializeGuestOnChain, fetchGuestProfile, getConnection } from "../lib/solana";
 import { deriveGuestPda, ORIN_PROGRAM_ID } from "../lib/pda";
 import idl from "../../idl/orin_identity.json";
 
@@ -361,6 +361,7 @@ const Dashboard = ({
   const [brightness, setBrightness] = useState(60);
   const [lightingMode, setLightingMode] = useState<"warm" | "cold" | "ambient">("warm");
   const [musicOn, setMusicOn] = useState(true);
+  const [musicTrack, setMusicTrack] = useState("Midnight in Tokyo");
   const [isRecording, setIsRecording] = useState(false);
   const [chatMessages, setChatMessages] = useState<Array<{role: "user" | "orin"; text: string}>>([
     { role: "orin", text: `Welcome, ${guestName}. I'm ORIN, your personal AI concierge. How can I help you today?` },
@@ -373,6 +374,12 @@ const Dashboard = ({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
 
+  // Memoized PDA Authority — ensures consistency across all syncs and listeners
+  const guestPda = useMemo(() => {
+    if (!wallet.publicKey) return null;
+    return deriveGuestPda(guestName, wallet.publicKey).pda;
+  }, [guestName, wallet.publicKey]);
+
   const playAudio = async (base64: string, mimeType: string) => {
     try {
       const audio = new Audio("data:" + mimeType + ";base64," + base64);
@@ -381,6 +388,66 @@ const Dashboard = ({
       console.warn("[ORIN] Audio play blocked or failed. User interaction might be required.", e);
     }
   };
+
+  /**
+   * Consolidates all Dashboard UI updates from AI or Backend ground-truth.
+   * Ensures visual sliders always match the internal state logic.
+   */
+  const syncUIState = useCallback((state: any) => {
+    if (!state) return;
+    if (state.temp !== undefined) setTemperature(Number(state.temp));
+    if (state.lighting !== undefined) setLightingMode(state.lighting);
+    if (state.brightness !== undefined) setBrightness(Number(state.brightness));
+    if (state.musicOn !== undefined || state.music !== undefined) {
+      setMusicOn(state.musicOn ?? !!state.music);
+    }
+    if (state.music && typeof state.music === "string") {
+      setMusicTrack(state.music);
+    }
+    if (state.services && Array.isArray(state.services)) {
+      setActiveRequests(prev => [...new Set([...prev, ...state.services])]);
+    }
+  }, []);
+
+  /**
+   * Refreshes dashboard from the live backend device state.
+   */
+  const refreshGroundTruth = useCallback(async () => {
+    if (!walletAddress || !guestPda) return;
+    try {
+      const status = await fetchDeviceStatus(guestPda.toBase58());
+      syncUIState(status);
+    } catch (e) {
+      console.warn("[ORIN] Failed to fetch ground truth device status", e);
+    }
+  }, [walletAddress, guestPda, syncUIState]);
+
+  // Initial and periodic ground-truth sync
+  useEffect(() => {
+    refreshGroundTruth();
+    const interval = setInterval(refreshGroundTruth, 30000); // 30s ground-truth sync
+    return () => clearInterval(interval);
+  }, [refreshGroundTruth]);
+
+  // On-chain state listener (WebSocket)
+  useEffect(() => {
+    if (!profileData || !walletAddress || !guestPda) return;
+    try {
+      const conn = getConnection();
+      const subId = conn.onAccountChange(guestPda, async (accInfo) => {
+        console.log("[ORIN] On-chain profile change detected. Re-syncing...");
+        const provider = getProvider(wallet);
+        const program = getProgram(provider, idl as any);
+        const profile = await fetchGuestProfile(program, guestPda);
+        if (profile) setProfileData(profile);
+      }, "confirmed");
+      return () => {
+        conn.removeAccountChangeListener(subId);
+      };
+    } catch (e) {
+      console.warn("[ORIN] Failed to setup WebSocket listener", e);
+    }
+  }, [profileData, walletAddress, guestPda, wallet, setProfileData]);
 
   const handleVoiceCommand = async (text: string) => {
     if (!text.trim() || !wallet.publicKey) return;
@@ -398,9 +465,16 @@ const Dashboard = ({
       // 1. Fire /voice-fast FIRST — get instant subtitle + audio
       const chatHistory = chatMessages.slice(-6).map(m => m.text);
       const currentPoints = profileData?.loyaltyPoints ?? profileData?.loyalty_points;
+      const initialPrefs = { temp: temperature, lighting: lightingMode, brightness, musicOn };
+      
       const fastResult = await fetchFastVoiceReply({
         userInput: text,
-        guestContext: { name: guestName, loyaltyPoints: currentPoints?.toNumber?.() || Number(currentPoints) || 0, history: chatHistory }
+        guestContext: { 
+          name: guestName, 
+          loyaltyPoints: currentPoints?.toNumber?.() || Number(currentPoints) || 0, 
+          history: chatHistory,
+          currentPreferences: initialPrefs
+        }
       });
 
       // 2. Instantly render the text subtitle from voice-fast
@@ -417,19 +491,25 @@ const Dashboard = ({
         playAudio(fastResult.audioBase64, fastResult.mimeType);
       }
 
+      // 3b. Sync UI state instantly if fast leg returned intent
+      let activePrefs = { ...initialPrefs, services: [], raw_response: "" };
+      if (fastResult.aiResult) {
+        syncUIState(fastResult.aiResult);
+        // Merge fast results into the payload for the heavy leg to prevent state overwrite
+        activePrefs = { ...activePrefs, ...fastResult.aiResult };
+      }
+
       // 4. Only trigger the heavier /voice-command + Solana flow if fastIntent === true
-      if (fastResult.fastIntent) {
-        const guestPda = deriveGuestPda(guestName, wallet.publicKey).pda;
+      if (fastResult.fastIntent && guestPda) {
         const provider = getProvider(wallet);
         const program = getProgram(provider, idl as any);
         
-          const currentPoints = profileData?.loyaltyPoints ?? profileData?.loyalty_points;
           const res = await saveVoicePreferences(
             program,
             guestPda,
-            wallet.publicKey,
+            wallet.publicKey!,
             text,
-            { temp: temperature, lighting: lightingMode, brightness, musicOn, services: [], raw_response: "" },
+            activePrefs,
             { name: guestName, loyaltyPoints: currentPoints?.toNumber?.() || Number(currentPoints) || 0, history: chatHistory },
             guestName,
           (asyncText: string) => {
@@ -443,15 +523,7 @@ const Dashboard = ({
         
         // Update local React state from AI interpretation to keep UI in sync
         if (res.aiResult) {
-          if (res.aiResult.temp !== undefined) setTemperature(Number(res.aiResult.temp));
-          if (res.aiResult.lighting !== undefined) setLightingMode(res.aiResult.lighting);
-          if (res.aiResult.brightness !== undefined) setBrightness(Number(res.aiResult.brightness));
-          if (res.aiResult.musicOn !== undefined) setMusicOn(Boolean(res.aiResult.musicOn));
-          
-          // Handle service requests from AI
-          if (res.aiResult.services && Array.isArray(res.aiResult.services) && res.aiResult.services.length > 0) {
-            setActiveRequests(prev => [...new Set([...prev, ...res.aiResult.services])]);
-          }
+          syncUIState(res.aiResult);
         }
 
         // Append signature silently to chat if it was required
@@ -471,14 +543,15 @@ const Dashboard = ({
         newMsgs[newMsgs.length - 1] = { role: "orin", text: `API Error: ${e.message}` };
         return newMsgs;
       });
+    } finally {
+      refreshGroundTruth();
     }
   };
 
   const handleSaveSetup = async () => {
-    if (!wallet.publicKey) return;
+    if (!wallet.publicKey || !guestPda) return;
     setIsSaving(true);
     try {
-      const guestPda = deriveGuestPda(guestName, wallet.publicKey).pda;
       const provider = getProvider(wallet);
       const program = getProgram(provider, idl as any);
 
@@ -487,7 +560,12 @@ const Dashboard = ({
         guestPda,
         wallet.publicKey,
         { temp: temperature, lighting: lightingMode, brightness, musicOn, services: [], raw_response: "" },
-        { name: guestName, loyaltyPoints: profileData?.loyaltyPoints?.toNumber?.() || Number(profileData?.loyaltyPoints) || 0, history: [] },
+        { 
+          name: guestName, 
+          loyaltyPoints: profileData?.loyaltyPoints?.toNumber?.() || Number(profileData?.loyaltyPoints) || 0, 
+          history: [],
+          currentPreferences: { temp: temperature, lighting: lightingMode, brightness, musicOn }
+        },
         guestName
       );
       const sigText = res.solanaTxSignature ? `\nSignature: ${res.solanaTxSignature.slice(0,10)}...` : ``;
@@ -496,6 +574,7 @@ const Dashboard = ({
       alert(`Error saving setup: ${e.message}`);
     } finally {
       setIsSaving(false);
+      refreshGroundTruth();
     }
   };
 
@@ -959,8 +1038,8 @@ const Dashboard = ({
           {musicOn && (
             <div className="flex items-center gap-4">
               <Volume2 size={18} className="text-accent" />
-              <div>
-                <p className="font-bold text-sm">Midnight in Tokyo</p>
+              <div className="flex-1">
+                <p className="font-bold text-sm truncate">{musicTrack}</p>
                 <p className="text-zinc-500 text-[10px] font-mono uppercase tracking-widest">Lo-fi Ambient</p>
               </div>
             </div>
@@ -1182,6 +1261,7 @@ export default function App() {
   const [walletAddress, setWalletAddress] = useState("");
   const [profileData, setProfileData] = useState<any>(null);
   const [isProfileLoading, setIsProfileLoading] = useState(false);
+  const [hasAttemptedSync, setHasAttemptedSync] = useState(false);
 
   // Boot animation
   useEffect(() => {
@@ -1240,12 +1320,13 @@ export default function App() {
     }
   }, [connected, publicKey, wallet]);
 
-  // Initial Sync
+  // Initial Sync — Fixed to avoid infinite RPC retries
   useEffect(() => {
-    if (connected && publicKey && wallet && !profileData && !isProfileLoading) {
+    if (connected && publicKey && wallet && !profileData && !isProfileLoading && !hasAttemptedSync) {
+      setHasAttemptedSync(true);
       syncProfile();
     }
-  }, [connected, publicKey, wallet, syncProfile, profileData, isProfileLoading]);
+  }, [connected, publicKey, wallet, syncProfile, profileData, isProfileLoading, hasAttemptedSync]);
 
   // Detect wallet disconnect → go back to landing
   useEffect(() => {
@@ -1267,6 +1348,7 @@ export default function App() {
     setGuestName("");
     setGuestEmail("");
     setProfileData(null);
+    setHasAttemptedSync(false);
     disconnect();
     setView("landing");
   };
