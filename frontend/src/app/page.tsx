@@ -59,6 +59,14 @@ import { getProgram, getProvider, initializeGuestOnChain, fetchGuestProfile, get
 import { deriveGuestPda, ORIN_PROGRAM_ID } from "../lib/pda";
 import idl from "../../idl/orin_identity.json";
 
+// --- Theme Context ---
+const ThemeContext = React.createContext<{ theme: "dark" | "light"; toggleTheme: () => void }>({
+  theme: "dark",
+  toggleTheme: () => {},
+});
+
+export const useTheme = () => React.useContext(ThemeContext);
+
 // Dynamic imports for wallet components (SSR-incompatible)
 const WalletMultiButton = dynamic(
   () => import("@solana/wallet-adapter-react-ui").then((mod) => mod.WalletMultiButton),
@@ -102,35 +110,44 @@ const Logo = ({ className }: { className?: string }) => (
 
 // --- Shared UI Components ---
 
-const Card = ({ children, className, onClick }: { children: React.ReactNode; className?: string; onClick?: () => void }) => (
-  <motion.div
-    onClick={onClick}
-    whileHover={onClick ? { scale: 1.01, backgroundColor: "var(--card-hover)" } : {}}
-    whileTap={onClick ? { scale: 0.99 } : {}}
-    className={cn(
-      "bg-card border border-border rounded-2xl p-6 transition-all relative overflow-hidden text-text-primary",
-      onClick && "cursor-pointer",
-      className
-    )}
-  >
-    {children}
-  </motion.div>
-);
+const Card = ({ children, className, onClick }: { children: React.ReactNode; className?: string; onClick?: () => void }) => {
+  const { theme } = useTheme();
+  return (
+    <motion.div
+      onClick={onClick}
+      whileHover={onClick ? { scale: 1.01, backgroundColor: "var(--card-hover)" } : {}}
+      whileTap={onClick ? { scale: 0.99 } : {}}
+      className={cn(
+        "border border-border rounded-2xl p-6 transition-all relative overflow-hidden",
+        theme === "light" ? "bg-white text-text-primary" : "bg-card text-text-primary",
+        onClick && "cursor-pointer",
+        className
+      )}
+    >
+      {children}
+    </motion.div>
+  );
+};
 
-const StatusBadge = ({ active, label }: { active: boolean; label: string }) => (
-  <div className={cn(
-    "flex items-center gap-2 px-3 py-1.5 rounded-full text-[9px] font-bold uppercase tracking-[0.3em] backdrop-blur-sm",
-    active
-      ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-400"
-      : "bg-card/50 border border-border text-text-muted"
-  )}>
+const StatusBadge = ({ active, label }: { active: boolean; label: string }) => {
+  const { theme } = useTheme();
+  return (
     <div className={cn(
-      "w-1.5 h-1.5 rounded-full",
-      active ? "bg-emerald-400 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.6)]" : "bg-text-muted/40"
-    )} />
-    {label}
-  </div>
-);
+      "flex items-center gap-2 px-3 py-1.5 rounded-full text-[9px] font-bold uppercase tracking-[0.3em] backdrop-blur-sm",
+      active
+        ? "bg-emerald-500/10 border border-emerald-500/20 text-emerald-400"
+        : theme === "light" 
+          ? "bg-white border-border text-text-muted" 
+          : "bg-card/50 border-border text-text-muted"
+    )}>
+      <div className={cn(
+        "w-1.5 h-1.5 rounded-full",
+        active ? "bg-emerald-400 animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.6)]" : "bg-text-muted/40"
+      )} />
+      {label}
+    </div>
+  );
+};
 
 // ============================================================
 // LANDING PAGE — Wallet Connect
@@ -346,7 +363,9 @@ const Dashboard = ({
   profileData,
   isProfileLoading,
   setProfileData,
-  onLogout
+  onLogout,
+  theme,
+  toggleTheme
 }: {
   guestName: string;
   guestEmail: string;
@@ -355,6 +374,8 @@ const Dashboard = ({
   isProfileLoading: boolean;
   setProfileData: (data: any) => void;
   onLogout: () => void;
+  theme: "dark" | "light";
+  toggleTheme: () => void;
 }) => {
   const [activeTab, setActiveTab] = useState<DashboardTab>("home");
   const [target_temp_c, setTargetTempC] = useState(22);
@@ -366,23 +387,6 @@ const Dashboard = ({
   const [nestMode, setNestMode] = useState("HEAT");
   const [hueColor, setHueColor] = useState("#C4A97A");
   const [isProcessingVoice, setIsProcessingVoice] = useState(false);
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
-
-  // Load theme from local storage
-  useEffect(() => {
-    const savedTheme = localStorage.getItem("orin_theme") as "dark" | "light";
-    if (savedTheme) {
-      setTheme(savedTheme);
-      document.documentElement.classList.toggle("light", savedTheme === "light");
-    }
-  }, []);
-
-  const toggleTheme = () => {
-    const newTheme = theme === "dark" ? "light" : "dark";
-    setTheme(newTheme);
-    localStorage.setItem("orin_theme", newTheme);
-    document.documentElement.classList.toggle("light", newTheme === "light");
-  };
 
   // Anti-Flicker Guard: Prevents stale ground-truth from overwriting recent user changes
   const lastInteractionRef = useRef<number>(0);
@@ -1042,7 +1046,7 @@ const Dashboard = ({
                 "flex flex-col items-center gap-2 md:gap-3 p-3 md:p-5 transition-all cursor-pointer",
                 lightingMode === scene.light 
                   ? "border-accent bg-accent/20 accent-glow shadow-accent/20" 
-                  : "bg-card border-border hover:bg-card-hover"
+                  : "border-border hover:bg-card-hover"
               )}
             >
               <scene.icon size={20} className={lightingMode === scene.light ? "text-accent" : "text-text-muted"} />
@@ -1331,7 +1335,7 @@ const Dashboard = ({
       )}>
         <AnimatePresence mode="wait">
           <motion.div
-            key={activeTab}
+            key={`${activeTab}-${theme}`}
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
@@ -1388,6 +1392,23 @@ export default function App() {
   const [profileData, setProfileData] = useState<any>(null);
   const [isProfileLoading, setIsProfileLoading] = useState(false);
   const [hasAttemptedSync, setHasAttemptedSync] = useState(false);
+  const [theme, setTheme] = useState<"dark" | "light">("dark");
+
+  // Load theme from local storage as early as possible
+  useEffect(() => {
+    const savedTheme = localStorage.getItem("orin_theme") as "dark" | "light";
+    if (savedTheme) {
+      setTheme(savedTheme);
+      document.documentElement.classList.toggle("light", savedTheme === "light");
+    }
+  }, []);
+
+  const toggleTheme = () => {
+    const newTheme = theme === "dark" ? "light" : "dark";
+    setTheme(newTheme);
+    localStorage.setItem("orin_theme", newTheme);
+    document.documentElement.classList.toggle("light", newTheme === "light");
+  };
 
   // Boot animation
   useEffect(() => {
@@ -1504,13 +1525,14 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-background text-text-primary selection:bg-accent selection:text-text-primary relative overflow-hidden">
-      {/* Background Peripheral Glows — Pure Aesthetics */}
-      <div className="fixed -top-[20%] -right-[10%] w-[60%] h-[60%] bg-accent/5 blur-[120px] rounded-full pointer-events-none z-0" />
-      <div className="fixed -bottom-[10%] -left-[10%] w-[40%] h-[40%] bg-accent/10 blur-[100px] rounded-full pointer-events-none z-0" />
+    <ThemeContext.Provider value={{ theme, toggleTheme }}>
+      <div className="min-h-screen bg-background text-text-primary selection:bg-accent selection:text-text-primary relative overflow-hidden">
+        {/* Background Peripheral Glows — Pure Aesthetics */}
+        <div className="fixed -top-[20%] -right-[10%] w-[60%] h-[60%] bg-accent/5 blur-[120px] rounded-full pointer-events-none z-0" />
+        <div className="fixed -bottom-[10%] -left-[10%] w-[40%] h-[40%] bg-accent/10 blur-[100px] rounded-full pointer-events-none z-0" />
 
-      <div className="relative z-10 flex flex-col min-h-screen">
-        <AnimatePresence mode="wait">
+        <div className="relative z-10 flex flex-col min-h-screen">
+          <AnimatePresence mode="wait">
           {view === "landing" && (
             <motion.div key="landing" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               <LandingPage onConnect={() => setView("onboarding")} />
@@ -1531,11 +1553,14 @@ export default function App() {
                 isProfileLoading={isProfileLoading}
                 setProfileData={setProfileData}
                 onLogout={handleLogout}
+                theme={theme}
+                toggleTheme={toggleTheme}
               />
             </motion.div>
           )}
         </AnimatePresence>
       </div>
     </div>
+  </ThemeContext.Provider>
   );
 }
