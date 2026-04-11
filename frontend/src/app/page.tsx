@@ -53,8 +53,8 @@ import { cn } from "../lib/utils";
 // Wallet & Solana Hooks
 import { useWallet, useAnchorWallet } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";
-import { transcribeAudio, fetchFastVoiceReply, fetchDeviceStatus, fetchTtsAudio } from "../lib/api";
-import { saveManualPreferences, saveVoicePreferences, getRelayOpts } from "../lib/savePreferences";
+import { transcribeAudio, fetchFastVoiceReply, fetchDeviceStatus, fetchTtsAudio, updateGuestAvatar, fetchGuestProfileApi } from "../lib/api";
+import { saveManualPreferences, saveVoicePreferences, getRelayOpts, RoomPreferences } from "../lib/savePreferences";
 import { getProgram, getProvider, initializeGuestOnChain, fetchGuestProfile, getConnection } from "../lib/solana";
 import { deriveGuestPda, ORIN_PROGRAM_ID } from "../lib/pda";
 import idl from "../../idl/orin_identity.json";
@@ -378,7 +378,7 @@ const Dashboard = ({
   toggleTheme: () => void;
 }) => {
   const [activeTab, setActiveTab] = useState<DashboardTab>("home");
-  const [target_temp_c, setTargetTempC] = useState(22);
+  const [temp, setTemp] = useState(22);
   const [brightness, setBrightness] = useState(60);
   const [lightingMode, setLightingMode] = useState<"warm" | "cold" | "ambient">("warm");
   const [musicOn, setMusicOn] = useState(true);
@@ -414,6 +414,11 @@ const Dashboard = ({
         const base64String = reader.result as string;
         setProfileImage(base64String);
         localStorage.setItem(`orin_profile_img_${walletAddress}`, base64String);
+        
+        if (guestPda) {
+          updateGuestAvatar(guestPda.toBase58(), base64String)
+            .catch(err => console.error("[ORIN] Failed to sync avatar to database:", err));
+        }
       };
       reader.readAsDataURL(file);
     }
@@ -452,7 +457,7 @@ const Dashboard = ({
     const isRecentInteraction = Date.now() - lastInteractionRef.current < 3000;
 
     // 1. Handle Nested Device Status structure (RoomDeviceState)
-    if (state.nest?.target_temp_c !== undefined && !isRecentInteraction) setTargetTempC(Number(state.nest.target_temp_c));
+    if (state.nest?.temp !== undefined && !isRecentInteraction) setTemp(Number(state.nest.temp));
     if (state.nest?.mode !== undefined && !isRecentInteraction) setNestMode(state.nest.mode);
     
     if (state.hue?.brightness !== undefined && !isRecentInteraction) setBrightness(Number(state.hue.brightness));
@@ -462,7 +467,7 @@ const Dashboard = ({
     
     // 2. Handle Flat AI Response structure (OrinAgentOutput)
     // AI responses are triggered by user interaction, so we allow them through
-    if (state.temp !== undefined) setTargetTempC(Number(state.temp));
+    if (state.temp !== undefined) setTemp(Number(state.temp));
     if (state.brightness !== undefined) setBrightness(Number(state.brightness));
     if (state.lighting !== undefined) setLightingMode(state.lighting);
     if (state.musicOn !== undefined) setMusicOn(!!state.musicOn);
@@ -551,12 +556,12 @@ const Dashboard = ({
     setChatMessages((prev) => [...prev, { role: "orin", text: `I'll adjust that for you right away, ${guestName}. Processing your request...` }]);
 
     try {
-      // 1. Fire /voice-fast FIRST — get instant subtitle + audio
       const chatHistory = chatMessages.slice(-6).map(m => m.text);
       const currentPoints = profileData?.loyaltyPoints ?? profileData?.loyalty_points;
-      const initialPrefs = { target_temp_c, lighting: lightingMode, brightness, musicOn };
+      const initialPrefs = { temp, lighting: lightingMode, brightness, musicOn };
       
-      const fastResult = await fetchFastVoiceReply({
+      // 1. Fire /voice-fast FIRST — get instant subtitle + Cartesia audio (sonic-3)
+      fetchFastVoiceReply({
         userInput: text,
         guestContext: { 
           name: guestName, 
@@ -564,48 +569,46 @@ const Dashboard = ({
           history: chatHistory,
           currentPreferences: initialPrefs
         }
-      });
+      }).then(fastResult => {
+        if (fastResult.text) {
+          setChatMessages((prev) => {
+            const newMsgs = [...prev];
+            // Only update if the last message is still the loading indicator
+            if (newMsgs[newMsgs.length - 1].role === "orin" && newMsgs[newMsgs.length - 1].text.includes("Processing")) {
+              newMsgs[newMsgs.length - 1] = { role: "orin", text: fastResult.text! };
+            }
+            return newMsgs;
+          });
+        }
+        if (fastResult.audioBase64) {
+          playAudio(fastResult.audioBase64, fastResult.mimeType);
+        }
+      }).catch(err => console.warn("[ORIN] Fast Voice / ACK failed", err));
 
-      // 2. Instantly render the text subtitle from voice-fast
-      if (fastResult.text) {
-        setChatMessages((prev) => {
-          const newMsgs = [...prev];
-          newMsgs[newMsgs.length - 1] = { role: "orin", text: fastResult.text! };
-          return newMsgs;
-        });
-      }
-
-      // 3. Play audio (non-blocking)
-      if (fastResult.audioBase64) {
-        playAudio(fastResult.audioBase64, fastResult.mimeType);
-      }
-
-      // 3b. Sync UI state instantly if fast leg returned intent
-      let activePrefs = { ...initialPrefs, services: [], raw_response: "" };
-      if (fastResult.aiResult) {
-        syncUIState(fastResult.aiResult);
-        // Merge fast results into the payload for the heavy leg to prevent state overwrite
-        activePrefs = { ...activePrefs, ...fastResult.aiResult };
-      }
-
-      // 4. Only trigger the heavier /voice-command + Solana flow if fastIntent === true
-      if (fastResult.fastIntent && guestPda) {
+      let activePrefs: RoomPreferences = {
+        temp,
+        lighting: lightingMode,
+        brightness,
+        music: musicOn ? musicTrack : ""
+      };
+      
+      if (guestPda) {
         const provider = getProvider(wallet);
         const program = getProgram(provider, idl as any);
         
         const res = await saveVoicePreferences(
-        program,
-        guestPda,
-        wallet.publicKey!,
-        text,
-        activePrefs,
-        { 
-          name: guestName, 
-          loyaltyPoints: currentPoints?.toNumber?.() || Number(currentPoints) || 0, 
-          history: chatHistory,
-          currentPreferences: activePrefs
-        },
-        guestName,
+          program,
+          guestPda,
+          wallet.publicKey!,
+          text,
+          activePrefs,
+          { 
+            name: guestName, 
+            loyaltyPoints: currentPoints?.toNumber?.() || Number(currentPoints) || 0, 
+            history: chatHistory,
+            currentPreferences: activePrefs
+          },
+          guestName,
           (asyncText: string) => {
             setChatMessages((prev) => {
               const newMsgs = [...prev];
@@ -615,9 +618,27 @@ const Dashboard = ({
           }
         );
         
+        // Extract raw_response and fetch TTS
+        if (res.aiResult?.raw_response) {
+          fetchTtsAudio(res.aiResult.raw_response)
+            .then(ttsRes => playAudio(ttsRes.audioBase64, ttsRes.mimeType))
+            .catch(err => console.error("TTS fetch failed", err));
+        }
+
         // Update local React state from AI interpretation to keep UI in sync
         if (res.aiResult) {
           syncUIState(res.aiResult);
+          
+          // Chat UI Feedback format
+          const tempFormat = res.aiResult.temp !== undefined ? `Temp to ${res.aiResult.temp}°C` : "";
+          const lightFormat = res.aiResult.lighting ? `Lighting to ${res.aiResult.lighting}` : "";
+          const brightFormat = res.aiResult.brightness !== undefined ? `Brightness to ${res.aiResult.brightness}%` : "";
+          const musicFormat = res.aiResult.music ? `Music: ${res.aiResult.music}` : (res.aiResult.musicOn === false ? "Music: Off" : "");
+          
+          const changedParams = [tempFormat, lightFormat, brightFormat, musicFormat].filter(Boolean).join(", ");
+          if (changedParams) {
+             setChatMessages((prev) => [...prev, { role: "orin", text: `⚙️ ORIN adjusted: ${changedParams}` }]);
+          }
         }
 
         // Append signature silently to chat if it was required
@@ -651,17 +672,18 @@ const Dashboard = ({
       const provider = getProvider(wallet);
       const program = getProgram(provider, idl as any);
 
+      const manualPrefs = {
+        temp,
+        lighting: lightingMode,
+        brightness,
+        music: musicOn ? musicTrack : ""
+      };
+
       const res = await saveManualPreferences(
         program,
         guestPda,
         wallet.publicKey,
-        { target_temp_c, lighting: lightingMode, brightness, musicOn, services: [], raw_response: "" },
-        { 
-          name: guestName, 
-          loyaltyPoints: profileData?.loyaltyPoints?.toNumber?.() || Number(profileData?.loyaltyPoints) || 0, 
-          history: [],
-          currentPreferences: { target_temp_c, lighting: lightingMode, brightness, musicOn }
-        },
+        manualPrefs,
         guestName
       );
       const sigText = res.solanaTxSignature ? `\n\nTX Signature: ${res.solanaTxSignature.slice(0,12)}...` : ``;
@@ -860,7 +882,7 @@ const Dashboard = ({
         <p className="text-text-muted text-[10px] font-mono uppercase tracking-widest mb-3">Environment</p>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
-            { icon: Thermometer, label: "Climate", value: `${target_temp_c}°C · ${nestMode}`, color: "text-accent" },
+            { icon: Thermometer, label: "Climate", value: `${temp}°C · ${nestMode}`, color: "text-accent" },
             { icon: Lightbulb, label: "Lighting", value: lightingMode, color: "text-accent" },
             { icon: Music, label: "Ambient", value: musicOn ? "Playing" : "Off", color: "text-accent" },
             { icon: Shield, label: "Privacy", value: "Active", color: "text-emerald-500" },
@@ -1038,7 +1060,7 @@ const Dashboard = ({
             <Card
               key={scene.name}
               onClick={() => {
-                setTargetTempC(scene.temp);
+                setTemp(scene.temp);
                 setBrightness(scene.bright);
                 setLightingMode(scene.light);
               }}
@@ -1068,12 +1090,12 @@ const Dashboard = ({
                 <Thermometer size={18} />
                 <span className="font-bold text-sm md:text-base uppercase tracking-wider">Climate</span>
               </div>
-              <span className="text-xl md:text-2xl font-mono font-bold">{target_temp_c}°C</span>
+              <span className="text-xl md:text-2xl font-mono font-bold">{temp}°C</span>
             </div>
             <div className="pt-2 px-1">
               <input
-                type="range" min={16} max={30} step={0.5} value={target_temp_c}
-                onChange={(e) => setTargetTempC(parseFloat(e.target.value))}
+                type="range" min={16} max={30} step={0.5} value={temp}
+                onChange={(e) => setTemp(parseFloat(e.target.value))}
                 className="w-full accent-accent h-2 rounded-lg cursor-pointer bg-border appearance-none"
               />
             </div>
@@ -1452,6 +1474,15 @@ export default function App() {
       const provider = getProvider(wallet);
       const program = getProgram(provider, idl as any);
       const profile = await fetchGuestProfile(program, pda);
+      
+      try {
+        const apiProfile = await fetchGuestProfileApi(pda.toBase58());
+        if (apiProfile?.profile?.avatarUrl) {
+           localStorage.setItem(`orin_profile_img_${publicKey.toBase58()}`, apiProfile.profile.avatarUrl);
+        }
+      } catch (err) {
+        console.warn("[ORIN] Failed to fetch avatar from profile API:", err);
+      }
       
       if (profile) {
         setProfileData(profile);

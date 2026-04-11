@@ -22,10 +22,10 @@ import idl from "@idl/orin_identity.json";
 type LightingMode = "warm" | "cold" | "ambient";
 type RoomMode = "relax" | "focus" | "sleep";
 
-const MODE_PRESETS: Record<RoomMode, { target_temp_c: number; brightness: number; lighting: LightingMode; musicOn: boolean; color: string; label: string; desc: string }> = {
-  relax: { target_temp_c: 23, brightness: 40, lighting: "warm", musicOn: true, color: "#FF8C42", label: "Relax", desc: "Warm · 23°C · 40%" },
-  focus: { target_temp_c: 21, brightness: 85, lighting: "cold", musicOn: false, color: "#1E90FF", label: "Focus", desc: "Cool · 21°C · 85%" },
-  sleep: { target_temp_c: 19, brightness: 10, lighting: "ambient", musicOn: true, color: "#4B0082", label: "Sleep", desc: "Ambient · 19°C · 10%" },
+const MODE_PRESETS: Record<RoomMode, { temp: number; brightness: number; lighting: LightingMode; music: string; color: string; label: string; desc: string }> = {
+  relax: { temp: 23, brightness: 40, lighting: "warm", music: "Luxe Jazz", color: "#FF8C42", label: "Relax", desc: "Warm · 23°C · 40%" },
+  focus: { temp: 21, brightness: 85, lighting: "cold", music: "", color: "#1E90FF", label: "Focus", desc: "Cool · 21°C · 85%" },
+  sleep: { temp: 19, brightness: 10, lighting: "ambient", music: "Ambient Waves", color: "#4B0082", label: "Sleep", desc: "Ambient · 19°C · 10%" },
 };
 
 export default function RoomControl() {
@@ -33,11 +33,11 @@ export default function RoomControl() {
   const anchorWallet = useAnchorWallet();
 
   const [activeMode, setActiveMode] = useState<RoomMode | null>(null);
-  const [target_temp_c, setTargetTempC] = useState(22);
+  const [temp, setTemp] = useState(22);
   const [brightness, setBrightness] = useState(60);
   const [lightColor, setLightColor] = useState("#C9A84C");
   const [lightingType, setLightingType] = useState<LightingMode>("warm");
-  const [musicOn, setMusicOn] = useState(true);
+  const [music, setMusic] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [saveResult, setSaveResult] = useState<SavePreferencesResult | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -53,11 +53,11 @@ export default function RoomControl() {
   const applyMode = useCallback((mode: RoomMode) => {
     const p = MODE_PRESETS[mode];
     setActiveMode(mode);
-    setTargetTempC(p.target_temp_c);
+    setTemp(p.temp);
     setBrightness(p.brightness);
     setLightColor(p.color);
     setLightingType(p.lighting);
-    setMusicOn(p.musicOn);
+    setMusic(p.music);
   }, []);
 
   const handleSave = useCallback(async () => {
@@ -74,17 +74,13 @@ export default function RoomControl() {
       const program = new Program(idl as Idl, provider);
       const { pda } = deriveGuestPda(guestEmail, publicKey!);
       const preferences: RoomPreferences = {
-        target_temp_c: target_temp_c,
+        temp: temp,
         lighting: lightingType,
         brightness: brightness,
-        musicOn: musicOn,
-        services: [],
-        raw_response: `Room set to ${target_temp_c}°C with ${lightingType} lighting at ${brightness}% brightness.`,
+        music: music,
       };
 
-      const guestContext: GuestContext = { name: guestEmail.split("@")[0], loyaltyPoints: 0, history: [] };
-
-      const result = await saveManualPreferences(program, pda, publicKey, preferences, guestContext, guestEmail);
+      const result = await saveManualPreferences(program, pda, publicKey, preferences, guestEmail);
 
       setSaveResult(result);
     } catch (err: any) {
@@ -92,7 +88,7 @@ export default function RoomControl() {
     } finally {
       setIsSaving(false);
     }
-  }, [anchorWallet, publicKey, guestEmail, target_temp_c, brightness, lightColor, lightingType, activeMode]);
+  }, [anchorWallet, publicKey, guestEmail, temp, brightness, lightColor, lightingType, music, activeMode]);
 
   const handleVoiceToggle = useCallback(async () => {
     if (!anchorWallet || !publicKey || !guestEmail) {
@@ -142,12 +138,10 @@ export default function RoomControl() {
             const { pda } = deriveGuestPda(guestEmail, publicKey!);
         
             const preferences: RoomPreferences = {
-              target_temp_c: target_temp_c,
+              temp: temp,
               lighting: lightingType,
               brightness: brightness,
-              musicOn: musicOn,
-              services: [],
-              raw_response: "Voice command processed",
+              music: music,
             };
             const guestContext: GuestContext = { name: guestEmail.split("@")[0], loyaltyPoints: 0, history: [] };
 
@@ -169,7 +163,7 @@ export default function RoomControl() {
         setIsProcessingVoice(false);
       }
     }
-  }, [anchorWallet, publicKey, guestEmail, target_temp_c, lightingType, isRecording]);
+  }, [anchorWallet, publicKey, guestEmail, temp, lightingType, isRecording]);
 
   return (
     <div style={{ width: "100%", maxWidth: 640, margin: "0 auto" }}>
@@ -226,14 +220,14 @@ export default function RoomControl() {
       <div className="orin-card fade-up fade-up-d3">
         <div className="section-label" style={{ marginBottom: 28 }}>Manual Controls</div>
 
-        {/* target_temp_c */}
+        {/* temp */}
         <div style={{ marginBottom: 28 }}>
           <div className="control-row">
-            <span className="control-label">target_temp_c</span>
-            <span className="control-value">{target_temp_c}°C</span>
+            <span className="control-label">Temperature</span>
+            <span className="control-value">{temp}°C</span>
           </div>
-          <input id="temp-slider" type="range" min={16} max={30} step={0.5} value={target_temp_c}
-            onChange={(e) => { setTargetTempC(parseFloat(e.target.value)); setActiveMode(null); }} />
+          <input id="temp-slider" type="range" min={16} max={30} step={0.5} value={temp}
+            onChange={(e) => { setTemp(parseFloat(e.target.value)); setActiveMode(null); }} />
         </div>
 
         {/* Brightness */}

@@ -36,12 +36,10 @@ export function getRelayOpts() {
 }
 
 export interface RoomPreferences {
-  target_temp_c: number;
+  temp: number;
   lighting: "warm" | "cold" | "ambient";
   brightness: number;
-  musicOn: boolean;
-  services: string[];
-  raw_response: string;
+  music: string;
 }
 
 export interface SavePreferencesResult {
@@ -111,12 +109,11 @@ export async function saveVoicePreferences(
  * Uses the high-speed /api/v1/preferences bypass endpoint.
  */
 export async function saveManualPreferences(
-  program: Program,
+  program: any,
   guestPda: PublicKey,
   ownerPubkey: PublicKey,
   preferences: RoomPreferences,
-  guestContext: GuestContext,
-  guestIdentifier: string
+  guestName: string
 ): Promise<SavePreferencesResult> {
   // Build the EXACT body object that will be sent to the backend.
   // The backend hashes request.body, so we must hash this SAME object locally
@@ -124,7 +121,6 @@ export async function saveManualPreferences(
   const canonicalBody = {
     guestPda: guestPda.toBase58(),
     preferences,
-    guestContext,
   };
 
   const apiResponse = await stageManualPreferences(canonicalBody);
@@ -138,10 +134,10 @@ export async function saveManualPreferences(
 
   // Manual bypass often requires signature to sync state, but we obey backend
   if (apiResponse.requiresSignature !== false) {
-    const { identifierHash } = deriveGuestPda(guestIdentifier, ownerPubkey);
+    const { identifierHash } = deriveGuestPda(guestName, ownerPubkey);
     txSignature = await updatePreferencesOnChain(
       program, guestPda, ownerPubkey, hashBytes,
-      identifierHash, guestContext.name,
+      identifierHash, guestName,
       getRelayOpts()
     );
   }

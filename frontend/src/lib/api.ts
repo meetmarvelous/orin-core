@@ -11,7 +11,7 @@ export interface GuestContext {
   loyaltyPoints: number;
   history: string[];
   currentPreferences?: {
-    target_temp_c?: number;
+    temp?: number;
     lighting?: string;
     brightness?: number;
     musicOn?: boolean;
@@ -38,7 +38,6 @@ export interface VoiceCommandResponse {
 export interface ManualPreferencesRequest {
   guestPda: string;
   preferences: any; // RoomPreferences
-  guestContext: GuestContext;
 }
 
 /**
@@ -229,7 +228,7 @@ export interface RoomDeviceState {
   };
   lighting: "warm" | "cold" | "ambient";
   nest: {
-    target_temp_c: number;
+    temp: number;
     mode: string;
   };
   music: string;
@@ -291,4 +290,30 @@ export async function fetchTtsAudio(text: string): Promise<TtsResponse> {
   }
 
   return response.json();
+}
+
+export async function fetchGuestProfileApi(guestPda: string): Promise<any> {
+  const response = await fetch(`${API_BASE}/api/v1/guest/profile?guestPda=${guestPda}`, {
+    headers: {
+      "X-API-KEY": API_KEY,
+    },
+  });
+  if (!response.ok) {
+    throw new Error(`Profile API error: ${response.status}`);
+  }
+  return response.json();
+}
+
+export async function updateGuestAvatar(guestPda: string, avatarUrl: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/api/v1/guest/avatar_update`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-API-KEY": API_KEY,
+    },
+    body: JSON.stringify({ guestPda, avatarUrl }),
+  });
+  if (!response.ok) {
+    throw new Error(`Avatar Update API error: ${response.status}`);
+  }
 }
