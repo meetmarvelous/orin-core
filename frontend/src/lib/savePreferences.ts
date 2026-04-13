@@ -13,7 +13,13 @@
 
 import { Program } from "@coral-xyz/anchor";
 import { PublicKey } from "@solana/web3.js";
-import { stageVoiceCommand, stageManualPreferences, GuestContext, relayTransaction } from "./api";
+import {
+  stageVoiceCommand,
+  stageManualPreferences,
+  GuestContext,
+  AiResultPayload,
+  relayTransaction,
+} from "./api";
 import { updatePreferencesOnChain } from "./solana";
 import { deriveGuestPda } from "./pda";
 
@@ -47,7 +53,7 @@ export interface SavePreferencesResult {
   hashHex: string;
   solanaTxSignature?: string;
   requiresSignature?: boolean;
-  aiResult?: any;
+  aiResult?: AiResultPayload;
 }
 
 /**
@@ -109,7 +115,7 @@ export async function saveVoicePreferences(
  * Uses the high-speed /api/v1/preferences bypass endpoint.
  */
 export async function saveManualPreferences(
-  program: any,
+  program: Program,
   guestPda: PublicKey,
   ownerPubkey: PublicKey,
   preferences: RoomPreferences,
@@ -132,8 +138,11 @@ export async function saveManualPreferences(
 
   let txSignature: string | undefined = undefined;
 
-  // Manual bypass often requires signature to sync state, but we obey backend
-  if (apiResponse.requiresSignature !== false) {
+  // Manual saves are on-chain synchronization events, so we sign unless
+  // the backend explicitly opts out in a future contract revision.
+  const requiresSignature = apiResponse.requiresSignature ?? true;
+
+  if (requiresSignature) {
     const { identifierHash } = deriveGuestPda(guestName, ownerPubkey);
     txSignature = await updatePreferencesOnChain(
       program, guestPda, ownerPubkey, hashBytes,
@@ -143,10 +152,9 @@ export async function saveManualPreferences(
   }
 
   return { 
-    apiAccepted: apiResponse.status === "accepted", 
+    apiAccepted: apiResponse.status === "success", 
     hashHex, 
     solanaTxSignature: txSignature,
-    requiresSignature: apiResponse.requiresSignature !== false,
-    aiResult: apiResponse.aiResult
+    requiresSignature,
   };
 }

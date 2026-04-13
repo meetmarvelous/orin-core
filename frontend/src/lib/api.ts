@@ -6,6 +6,18 @@
  */
 
 /** Must match backend/src/ai_agent.ts GuestContext */
+export interface AiResultPayload {
+  temp?: number;
+  lighting?: "warm" | "cold" | "ambient";
+  brightness?: number;
+  music?: string;
+  musicOn?: boolean;
+  services?: string[];
+  raw_response?: string;
+  text?: string;
+  [key: string]: string | number | boolean | string[] | undefined;
+}
+
 export interface GuestContext {
   name: string;
   loyaltyPoints: number;
@@ -32,12 +44,24 @@ export interface VoiceCommandResponse {
   message: string;
   hash: string;
   requiresSignature?: boolean;
-  aiResult?: any;
+  aiResult?: AiResultPayload;
 }
 
 export interface ManualPreferencesRequest {
   guestPda: string;
-  preferences: any; // RoomPreferences
+  preferences: {
+    temp: number;
+    lighting: "warm" | "cold" | "ambient";
+    brightness: number;
+    music: string;
+  };
+}
+
+export interface ManualPreferencesResponse {
+  status: "success";
+  info: string;
+  hash: string;
+  requiresSignature?: boolean;
 }
 
 /**
@@ -90,7 +114,7 @@ export async function stageVoiceCommand(
  */
 export async function stageManualPreferences(
   payload: ManualPreferencesRequest
-): Promise<VoiceCommandResponse> {
+): Promise<ManualPreferencesResponse> {
   const response = await fetch(`${API_BASE}/api/v1/preferences`, {
     method: "POST",
     headers: {
@@ -200,7 +224,7 @@ export async function fetchFastVoiceReply(payload: {
   audioBase64: string;
   text?: string;
   fastIntent?: boolean;
-  aiResult?: any;
+  aiResult?: AiResultPayload;
 }> {
   const response = await fetch(`${API_BASE}/api/v1/voice-fast`, {
     method: "POST",
@@ -249,6 +273,21 @@ export interface TtsResponse {
   latencyMs: number;
 }
 
+export interface GuestProfileRecord {
+  guestPda: string;
+  avatarUrl?: string;
+  createdAt?: string;
+  lastSeenAt?: string;
+  [key: string]: unknown;
+}
+
+export interface GuestProfileApiResponse {
+  status: string;
+  guestPda: string;
+  profile?: GuestProfileRecord;
+  preferences?: Array<Record<string, unknown>>;
+}
+
 /**
  * GET /api/v1/device/status?guestPda=<YOUR_PDA>
  * Fetches the current live state of the room devices for a specific guest.
@@ -292,7 +331,7 @@ export async function fetchTtsAudio(text: string): Promise<TtsResponse> {
   return response.json();
 }
 
-export async function fetchGuestProfileApi(guestPda: string): Promise<any> {
+export async function fetchGuestProfileApi(guestPda: string): Promise<GuestProfileApiResponse> {
   const response = await fetch(`${API_BASE}/api/v1/guest/profile?guestPda=${guestPda}`, {
     headers: {
       "X-API-KEY": API_KEY,

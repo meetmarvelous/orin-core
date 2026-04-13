@@ -12,6 +12,7 @@
  */
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Brain,
@@ -23,22 +24,17 @@ import {
   Music,
   Shield,
   Check,
-  MapPin,
-  Clock,
   Zap,
   Send,
   ChevronLeft,
-  Settings,
   User,
   Mic,
   MicOff,
   Wallet,
   Sparkles,
   Globe,
-  Star,
   ArrowRight,
   Volume2,
-  VolumeX,
   Moon,
   Sun,
   Coffee,
@@ -47,16 +43,26 @@ import {
   MessageSquare,
   Camera,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import type { Idl } from "@coral-xyz/anchor";
 import { cn } from "../lib/utils";
 
 // Wallet & Solana Hooks
 import { useWallet, useAnchorWallet } from "@solana/wallet-adapter-react";
 import { PublicKey } from "@solana/web3.js";
 import { usePrivy } from "@privy-io/react-auth";
-import { transcribeAudio, fetchFastVoiceReply, fetchDeviceStatus, fetchTtsAudio, updateGuestAvatar, fetchGuestProfileApi } from "../lib/api";
+import {
+  transcribeAudio,
+  fetchFastVoiceReply,
+  fetchDeviceStatus,
+  fetchTtsAudio,
+  updateGuestAvatar,
+  fetchGuestProfileApi,
+  type GuestProfileApiResponse,
+} from "../lib/api";
 import { saveManualPreferences, saveVoicePreferences, getRelayOpts, RoomPreferences } from "../lib/savePreferences";
 import { getProgram, getProvider, initializeGuestOnChain, fetchGuestProfile, getConnection } from "../lib/solana";
-import { deriveGuestPda, ORIN_PROGRAM_ID } from "../lib/pda";
+import { deriveGuestPda } from "../lib/pda";
 import idl from "../../idl/orin_identity.json";
 
 // --- Theme Context ---
@@ -85,6 +91,60 @@ const CartesiaLogo = () => (
 
 type View = "landing" | "onboarding" | "dashboard";
 type DashboardTab = "home" | "assistant" | "control" | "profile";
+type ChatRole = "user" | "orin";
+type ChatMessage = {
+  id: string;
+  role: ChatRole;
+  text: string;
+};
+type CanonicalRoomState = {
+  temp?: number;
+  lighting?: "warm" | "cold" | "ambient";
+  brightness?: number;
+  music?: string;
+  musicOn?: boolean;
+  services?: string[];
+  nest?: {
+    temp?: number;
+    mode?: string;
+  };
+  hue?: {
+    color?: string;
+    brightness?: number;
+  };
+};
+
+type DashboardProfile = Partial<NonNullable<GuestProfileApiResponse["profile"]>> & {
+  loyaltyPoints?: number | { toNumber?: () => number; toString?: () => string };
+  loyalty_points?: number | { toNumber?: () => number; toString?: () => string };
+  stayCount?: number;
+  stay_count?: number;
+  isInitialized?: boolean;
+};
+
+type SolanaLinkedAccount = {
+  type: string;
+  chainType?: string;
+  address?: string;
+};
+
+const createChatMessage = (role: ChatRole, text: string, id?: string): ChatMessage => ({
+  id: id ?? `${role}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  role,
+  text,
+});
+
+const getErrorMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : String(error);
+
+const getNumericValue = (
+  value: number | { toNumber?: () => number; toString?: () => string } | undefined
+): number => {
+  if (typeof value === "number") return value;
+  if (typeof value?.toNumber === "function") return value.toNumber();
+  const fallback = Number(value?.toString?.() ?? 0);
+  return Number.isFinite(fallback) ? fallback : 0;
+};
 
 // --- Logo ---
 
@@ -161,15 +221,16 @@ const StatusBadge = ({ active, label }: { active: boolean; label: string }) => {
 // LANDING PAGE — Wallet Connect
 // ============================================================
 
-const LandingPage = ({ onConnect }: { onConnect: () => void }) => {
-  const { login, ready, authenticated } = usePrivy();
+const LandingPage = () => {
+  const { login, ready } = usePrivy();
+  const easeCurve: [number, number, number, number] = [0.22, 1, 0.36, 1];
   const containerVariants = {
     hidden: { opacity: 0 },
     visible: { opacity: 1, transition: { staggerChildren: 0.15, delayChildren: 0.2 } }
   };
   const itemVariants = {
     hidden: { opacity: 0, y: 30 },
-    visible: { opacity: 1, y: 0, transition: { duration: 0.8, ease: [0.22, 1, 0.36, 1] as any } }
+    visible: { opacity: 1, y: 0, transition: { duration: 0.8, ease: easeCurve } }
   };
 
   return (
@@ -373,8 +434,9 @@ const OnboardingFlow = ({ onComplete, onBack }: { onComplete: (name: string) => 
 
 const Dashboard = ({
   guestName,
-  guestEmail,
   walletAddress,
+  effectivePublicKey,
+  isPrivyAuthenticated,
   profileData,
   isProfileLoading,
   setProfileData,
@@ -383,11 +445,12 @@ const Dashboard = ({
   toggleTheme
 }: {
   guestName: string;
-  guestEmail: string;
   walletAddress: string;
-  profileData: any;
+  effectivePublicKey: PublicKey | null;
+  isPrivyAuthenticated: boolean;
+  profileData: DashboardProfile | null;
   isProfileLoading: boolean;
-  setProfileData: (data: any) => void;
+  setProfileData: (data: DashboardProfile | null) => void;
   onLogout: () => void;
   theme: "dark" | "light";
   toggleTheme: () => void;
@@ -400,22 +463,42 @@ const Dashboard = ({
   const [musicTrack, setMusicTrack] = useState("Midnight in Tokyo");
   const [isRecording, setIsRecording] = useState(false);
   const [nestMode, setNestMode] = useState("HEAT");
-  const [hueColor, setHueColor] = useState("#C4A97A");
+  const [, setHueColor] = useState("#C4A97A");
   const [isProcessingVoice, setIsProcessingVoice] = useState(false);
 
   // Anti-Flicker Guard: Prevents stale ground-truth from overwriting recent user changes
   const lastInteractionRef = useRef<number>(0);
   const setInteractionTimestamp = () => { lastInteractionRef.current = Date.now(); };
-  const [chatMessages, setChatMessages] = useState<Array<{role: "user" | "orin"; text: string}>>([
-    { role: "orin", text: `Welcome, ${guestName}. I'm ORIN, your personal AI concierge. How can I help you today?` },
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
+    createChatMessage("orin", `Welcome, ${guestName}. I'm ORIN, your personal AI concierge. How can I help you today?`, "welcome"),
   ]);
   const [profileImage, setProfileImage] = useState<string | null>(null);
+
+  useEffect(() => {
+    setChatMessages([
+      createChatMessage("orin", `Welcome, ${guestName}. I'm ORIN, your personal AI concierge. How can I help you today?`, "welcome"),
+    ]);
+  }, [guestName]);
 
   // Load profile image from local storage on mount
   useEffect(() => {
     const savedImg = localStorage.getItem(`orin_profile_img_${walletAddress}`);
-    if (savedImg) setProfileImage(savedImg);
+    setProfileImage(savedImg || null);
   }, [walletAddress]);
+
+  const appendChatMessage = useCallback((role: ChatRole, text: string, id?: string) => {
+    const nextMessage = createChatMessage(role, text, id);
+    setChatMessages((prev) => [...prev, nextMessage]);
+    return nextMessage.id;
+  }, []);
+
+  const replaceChatMessage = useCallback((messageId: string, text: string) => {
+    setChatMessages((prev) =>
+      prev.map((message) =>
+        message.id === messageId ? { ...message, text } : message
+      )
+    );
+  }, []);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -430,7 +513,7 @@ const Dashboard = ({
         setProfileImage(base64String);
         localStorage.setItem(`orin_profile_img_${walletAddress}`, base64String);
         
-        if (guestPda) {
+        if (isPrivyAuthenticated && effectivePublicKey && guestPda) {
           updateGuestAvatar(guestPda.toBase58(), base64String)
             .catch(err => console.error("[ORIN] Failed to sync avatar to database:", err));
         }
@@ -448,9 +531,9 @@ const Dashboard = ({
 
   // Memoized PDA Authority — ensures consistency across all syncs and listeners
   const guestPda = useMemo(() => {
-    if (!wallet.publicKey) return null;
-    return deriveGuestPda(guestName, wallet.publicKey).pda;
-  }, [guestName, wallet.publicKey]);
+    if (!effectivePublicKey || !guestName) return null;
+    return deriveGuestPda(guestName, effectivePublicKey).pda;
+  }, [guestName, effectivePublicKey]);
 
   const playAudio = async (base64: string, mimeType: string) => {
     try {
@@ -465,7 +548,7 @@ const Dashboard = ({
    * Consolidates all Dashboard UI updates from AI (flat) or Backend ground-truth (nested).
    * Ensures visual sliders always match the internal state logic exactly.
    */
-  const syncUIState = useCallback((state: any) => {
+  const syncUIState = useCallback((state: CanonicalRoomState) => {
     if (!state) return;
     
     // Pessimistic Guard: Skip ground-truth if user recently interacted (3s quiet period)
@@ -495,7 +578,7 @@ const Dashboard = ({
       setMusicTrack(state.music);
     }
     if (state.services && Array.isArray(state.services)) {
-      setActiveRequests(prev => [...new Set([...prev, ...state.services])]);
+      setActiveRequests(prev => [...new Set([...prev, ...(state.services ?? [])])]);
     }
   }, []);
 
@@ -533,13 +616,13 @@ const Dashboard = ({
 
   // On-chain state listener (WebSocket)
   useEffect(() => {
-    if (!profileData || !walletAddress || !guestPda) return;
+    if (!wallet.publicKey || !walletAddress || !guestPda) return;
     try {
       const conn = getConnection();
-      const subId = conn.onAccountChange(guestPda, async (accInfo) => {
+      const subId = conn.onAccountChange(guestPda, async () => {
         console.log("[ORIN] On-chain profile change detected. Re-syncing...");
         const provider = getProvider(wallet);
-        const program = getProgram(provider, idl as any);
+        const program = getProgram(provider, idl as Idl);
         const profile = await fetchGuestProfile(program, guestPda);
         if (profile) setProfileData(profile);
       }, "confirmed");
@@ -549,29 +632,23 @@ const Dashboard = ({
     } catch (e) {
       console.warn("[ORIN] Failed to setup WebSocket listener", e);
     }
-  }, [profileData, walletAddress, guestPda, wallet, setProfileData]);
+  }, [guestPda, setProfileData, wallet, walletAddress]);
 
-  const handleTextSend = () => {
-    if (!chatInput.trim()) return;
-    handleVoiceCommand(chatInput.trim());
-    setChatInput("");
-  };
-
-  const handleVoiceCommand = async (text: string) => {
+  const handleVoiceCommand = useCallback(async (text: string) => {
     if (!text.trim() || !wallet.publicKey) return;
     setIsProcessingVoice(true);
     
     setChatInput("");
-    // Push the text to UI instantly if it wasn't already pushed by the audio transcriber
-    setChatMessages((prev) => {
-        const lastMsg = prev[prev.length - 1];
-        if (lastMsg?.role === "user" && lastMsg.text === text) return prev; // Avoid dupes from Voice
-        return [...prev, { role: "user", text }];
-    });
-    setChatMessages((prev) => [...prev, { role: "orin", text: `I'll adjust that for you right away, ${guestName}. Processing your request...` }]);
+    const historySource = [...chatMessages];
+    const lastMsg = historySource[historySource.length - 1];
+    if (lastMsg?.role !== "user" || lastMsg.text !== text) {
+      appendChatMessage("user", text);
+      historySource.push(createChatMessage("user", text, "history-user"));
+    }
+    const processingMessageId = appendChatMessage("orin", `I'll adjust that for you right away, ${guestName}. Processing your request...`);
 
     try {
-      const chatHistory = chatMessages.slice(-6).map(m => m.text);
+      const chatHistory = historySource.slice(-6).map((message) => message.text);
       const currentPoints = profileData?.loyaltyPoints ?? profileData?.loyalty_points;
       const initialPrefs = { temp, lighting: lightingMode, brightness, musicOn };
       
@@ -580,27 +657,20 @@ const Dashboard = ({
         userInput: text,
         guestContext: { 
           name: guestName, 
-          loyaltyPoints: currentPoints?.toNumber?.() || Number(currentPoints) || 0, 
+          loyaltyPoints: getNumericValue(currentPoints),
           history: chatHistory,
           currentPreferences: initialPrefs
         }
       }).then(fastResult => {
         if (fastResult.text) {
-          setChatMessages((prev) => {
-            const newMsgs = [...prev];
-            // Only update if the last message is still the loading indicator
-            if (newMsgs[newMsgs.length - 1].role === "orin" && newMsgs[newMsgs.length - 1].text.includes("Processing")) {
-              newMsgs[newMsgs.length - 1] = { role: "orin", text: fastResult.text! };
-            }
-            return newMsgs;
-          });
+          replaceChatMessage(processingMessageId, fastResult.text);
         }
         if (fastResult.audioBase64) {
           playAudio(fastResult.audioBase64, fastResult.mimeType);
         }
       }).catch(err => console.warn("[ORIN] Fast Voice / ACK failed", err));
 
-      let activePrefs: RoomPreferences = {
+      const activePrefs: RoomPreferences = {
         temp,
         lighting: lightingMode,
         brightness,
@@ -609,7 +679,7 @@ const Dashboard = ({
       
       if (guestPda) {
         const provider = getProvider(wallet);
-        const program = getProgram(provider, idl as any);
+        const program = getProgram(provider, idl as Idl);
         
         const res = await saveVoicePreferences(
           program,
@@ -619,17 +689,13 @@ const Dashboard = ({
           activePrefs,
           { 
             name: guestName, 
-            loyaltyPoints: currentPoints?.toNumber?.() || Number(currentPoints) || 0, 
+            loyaltyPoints: getNumericValue(currentPoints),
             history: chatHistory,
             currentPreferences: activePrefs
           },
           guestName,
           (asyncText: string) => {
-            setChatMessages((prev) => {
-              const newMsgs = [...prev];
-              newMsgs[newMsgs.length - 1] = { role: "orin", text: asyncText };
-              return newMsgs;
-            });
+            replaceChatMessage(processingMessageId, asyncText);
           }
         );
         
@@ -652,31 +718,43 @@ const Dashboard = ({
           
           const changedParams = [tempFormat, lightFormat, brightFormat, musicFormat].filter(Boolean).join(", ");
           if (changedParams) {
-             setChatMessages((prev) => [...prev, { role: "orin", text: `⚙️ ORIN adjusted: ${changedParams}` }]);
-          }
+             appendChatMessage("orin", `⚙️ ORIN adjusted: ${changedParams}`);
+           }
         }
 
         // Append signature silently to chat if it was required
         const sigStr = res.solanaTxSignature;
         if (sigStr) {
-          setChatMessages((prev) => {
-            const newMsgs = [...prev];
-            const currentText = newMsgs[newMsgs.length - 1].text;
-            newMsgs[newMsgs.length - 1] = { role: "orin", text: `${currentText} (Signature: ${sigStr.slice(0, 8)}...)` };
-            return newMsgs;
-          });
+          appendChatMessage("orin", `Signature confirmed: ${sigStr.slice(0, 8)}...`);
         }
       }
-    } catch (e: any) {
-      setChatMessages((prev) => {
-        const newMsgs = [...prev];
-        newMsgs[newMsgs.length - 1] = { role: "orin", text: `API Error: ${e.message}` };
-        return newMsgs;
-      });
+    } catch (e: unknown) {
+      replaceChatMessage(processingMessageId, `API Error: ${getErrorMessage(e)}`);
     } finally {
       setIsProcessingVoice(false);
       refreshGroundTruth();
     }
+  }, [
+    appendChatMessage,
+    brightness,
+    chatMessages,
+    guestName,
+    guestPda,
+    lightingMode,
+    musicOn,
+    musicTrack,
+    profileData,
+    refreshGroundTruth,
+    replaceChatMessage,
+    syncUIState,
+    temp,
+    wallet,
+  ]);
+
+  const handleTextSend = () => {
+    if (!chatInput.trim()) return;
+    handleVoiceCommand(chatInput.trim());
+    setChatInput("");
   };
 
   const handleSaveSetup = async () => {
@@ -685,7 +763,7 @@ const Dashboard = ({
     setInteractionTimestamp();
     try {
       const provider = getProvider(wallet);
-      const program = getProgram(provider, idl as any);
+      const program = getProgram(provider, idl as Idl);
 
       const manualPrefs = {
         temp,
@@ -703,8 +781,8 @@ const Dashboard = ({
       );
       const sigText = res.solanaTxSignature ? `\n\nTX Signature: ${res.solanaTxSignature.slice(0,12)}...` : ``;
       alert(`Success: Environment preferences synchronized.\n\nTransaction was subsidized by ORIN Relay (Gasless).${sigText}`);
-    } catch (e: any) {
-      alert(`Error saving setup: ${e.message}`);
+    } catch (e: unknown) {
+      alert(`Error saving setup: ${getErrorMessage(e)}`);
     } finally {
       setIsSaving(false);
       refreshGroundTruth();
@@ -717,7 +795,7 @@ const Dashboard = ({
     try {
       const { pda, identifierHash } = deriveGuestPda(guestName, wallet.publicKey);
       const provider = getProvider(wallet);
-      const program = getProgram(provider, idl as any);
+      const program = getProgram(provider, idl as Idl);
 
       const sig = await initializeGuestOnChain(
         program,
@@ -730,8 +808,8 @@ const Dashboard = ({
       
       alert(`Identity Created: ${sig.slice(0, 10)}...`);
       setProfileData({ isInitialized: true, stayCount: 0, loyaltyPoints: 0 });
-    } catch (e: any) {
-      alert(`Error initializing identity: ${e.message}`);
+    } catch (e: unknown) {
+      alert(`Error initializing identity: ${getErrorMessage(e)}`);
     } finally {
       setIsSaving(false);
       refreshGroundTruth(); // Confirm backend/MQTT state is in sync after manual change
@@ -762,22 +840,19 @@ const Dashboard = ({
           const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
           audioChunksRef.current = [];
           
-          setChatMessages((prev) => [...prev, { role: "user", text: "🎙️ (Audio recording)" }]);
+          const recordingMessageId = appendChatMessage("user", "🎙️ (Audio recording)");
           try {
             const text = await transcribeAudio(blob);
-            setChatMessages((prev) => {
-              const newMsgs = [...prev];
-              newMsgs[newMsgs.length - 1] = { role: "user", text };
-              return newMsgs;
-            });
+            replaceChatMessage(recordingMessageId, text);
             handleVoiceCommand(text);
-          } catch (e: any) {
-            setChatMessages((prev) => [...prev, { role: "orin", text: `Transcription failed: ${e.message}` }]);
+          } catch (e: unknown) {
+            replaceChatMessage(recordingMessageId, "🎙️ (Transcription failed)");
+            appendChatMessage("orin", `Transcription failed: ${getErrorMessage(e)}`);
           }
         };
         recorder.start();
         mediaRecorderRef.current = recorder;
-      }).catch(e => {
+      }).catch(() => {
           if (active) {
             alert('Microphone access denied or unavailable.');
             setIsRecording(false);
@@ -799,7 +874,7 @@ const Dashboard = ({
             mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
         }
     };
-  }, [isRecording]);
+  }, [appendChatMessage, handleVoiceCommand, isRecording, replaceChatMessage]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -981,7 +1056,7 @@ const Dashboard = ({
       <div className="flex-1 overflow-y-auto space-y-4 no-scrollbar pb-6 px-1">
         {chatMessages.map((msg, i) => (
           <motion.div
-            key={i}
+            key={msg.id}
             initial={{ opacity: 0, scale: 0.95, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             transition={{ delay: i * 0.05 }}
@@ -1208,7 +1283,7 @@ const Dashboard = ({
           <div className="relative group">
             <div className="w-24 h-24 rounded-full bg-accent/10 border-2 border-accent/20 flex items-center justify-center text-accent text-4xl font-bold overflow-hidden">
               {profileImage ? (
-                <img src={profileImage} alt="Profile" className="w-full h-full object-cover" />
+                <Image src={profileImage} alt="Profile" fill className="object-cover" unoptimized />
               ) : (
                 guestName.charAt(0).toUpperCase()
               )}
@@ -1322,7 +1397,7 @@ const Dashboard = ({
     }
   };
 
-  const tabs: Array<{ id: DashboardTab; icon: any; label: string }> = [
+  const tabs: Array<{ id: DashboardTab; icon: LucideIcon; label: string }> = [
     { id: "home", icon: Home, label: "Home" },
     { id: "assistant", icon: MessageSquare, label: "ORIN" },
     { id: "control", icon: Zap, label: "Control" },
@@ -1426,9 +1501,8 @@ export default function App() {
   const [isLoading, setIsLoading] = useState(true);
   const [progress, setProgress] = useState(0);
   const [guestName, setGuestName] = useState("");
-  const [guestEmail, setGuestEmail] = useState("");
   const [walletAddress, setWalletAddress] = useState("");
-  const [profileData, setProfileData] = useState<any>(null);
+  const [profileData, setProfileData] = useState<DashboardProfile | null>(null);
   const [isProfileLoading, setIsProfileLoading] = useState(false);
   const [hasAttemptedSync, setHasAttemptedSync] = useState(false);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
@@ -1436,19 +1510,22 @@ export default function App() {
   // Robust Solana Address Detection (Priority: Adapter > Privy User)
   const derivedAddress = useMemo(() => {
     if (publicKey) return publicKey.toBase58();
-    const solAccount = user?.linkedAccounts?.find(
-      (a: any) => (a.type === 'wallet' && a.chainType === 'solana') || (a.type === 'solana_wallet')
+    const linkedAccounts = (user?.linkedAccounts ?? []) as SolanaLinkedAccount[];
+    const solAccount = linkedAccounts.find(
+      (account) => (account.type === "wallet" && account.chainType === "solana") || account.type === "solana_wallet"
     );
-    return (solAccount as any)?.address || "";
+    return solAccount?.address || "";
   }, [publicKey, user]);
 
   const effectivePublicKey = useMemo(() => {
     if (publicKey) return publicKey;
     if (derivedAddress) {
-      try { return new PublicKey(derivedAddress); } catch (e) { return null; }
+      try { return new PublicKey(derivedAddress); } catch { return null; }
     }
     return null;
   }, [publicKey, derivedAddress]);
+
+  const normalizedGuestName = useMemo(() => guestName.trim(), [guestName]);
 
   // Load theme from local storage as early as possible
   useEffect(() => {
@@ -1502,6 +1579,14 @@ export default function App() {
     }
   }, [isLoading, privyAuthenticated, derivedAddress, walletAddress, view]);
 
+  useEffect(() => {
+    if (!privyAuthenticated || !derivedAddress) {
+      setWalletAddress("");
+      setProfileData(null);
+      setHasAttemptedSync(false);
+    }
+  }, [derivedAddress, privyAuthenticated]);
+
   const syncProfile = useCallback(async (nameOverride?: string) => {
     // Only block if we have NO address. We allow profile fetch even if wallet object isn't ready for signing yet.
     if (!effectivePublicKey) return;
@@ -1509,12 +1594,16 @@ export default function App() {
     setIsProfileLoading(true);
     try {
       const name = nameOverride || localStorage.getItem("orin_guest_name") || "";
+      if (!name) {
+        setProfileData(null);
+        return;
+      }
       const { pda } = deriveGuestPda(name, effectivePublicKey);
       
       // If we have an Anchor wallet, we can perform full IDL-based program fetches
       if (wallet) {
         const provider = getProvider(wallet);
-        const program = getProgram(provider, idl as any);
+        const program = getProgram(provider, idl as Idl);
         const profile = await fetchGuestProfile(program, pda);
         if (profile) setProfileData(profile);
       }
@@ -1541,11 +1630,11 @@ export default function App() {
 
   // Initial Sync — Fixed to avoid infinite RPC retries
   useEffect(() => {
-    if (connected && publicKey && wallet && !profileData && !isProfileLoading && !hasAttemptedSync) {
+    if (!isLoading && privyAuthenticated && effectivePublicKey && normalizedGuestName && !isProfileLoading && !hasAttemptedSync) {
       setHasAttemptedSync(true);
       syncProfile();
     }
-  }, [connected, publicKey, wallet, syncProfile, profileData, isProfileLoading, hasAttemptedSync]);
+  }, [effectivePublicKey, hasAttemptedSync, isLoading, isProfileLoading, normalizedGuestName, privyAuthenticated, syncProfile]);
 
   // Detect wallet disconnect → go back to landing
   // Only kick back if BOTH are false to handle bridging delays
@@ -1566,7 +1655,6 @@ export default function App() {
     localStorage.removeItem("orin_guest_name");
     localStorage.removeItem("orin_guest_email");
     setGuestName("");
-    setGuestEmail("");
     setProfileData(null);
     setHasAttemptedSync(false);
     disconnect();
@@ -1608,7 +1696,7 @@ export default function App() {
           <AnimatePresence mode="wait">
           {view === "landing" && (
             <motion.div key="landing" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-              <LandingPage onConnect={() => setView("onboarding")} />
+              <LandingPage />
             </motion.div>
           )}
           {view === "onboarding" && (
@@ -1620,8 +1708,9 @@ export default function App() {
             <motion.div key="dashboard" initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -10 }}>
               <Dashboard
                 guestName={guestName}
-                guestEmail={guestEmail}
                 walletAddress={walletAddress}
+                effectivePublicKey={effectivePublicKey}
+                isPrivyAuthenticated={privyAuthenticated}
                 profileData={profileData}
                 isProfileLoading={isProfileLoading}
                 setProfileData={setProfileData}
