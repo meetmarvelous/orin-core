@@ -776,6 +776,7 @@ const Dashboard = ({
     replaceChatMessage,
     syncUIState,
     temp,
+    effectivePublicKey,
     wallet,
   ]);
 
@@ -1554,33 +1555,16 @@ export default function App() {
   const [hasAttemptedSync, setHasAttemptedSync] = useState(false);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
 
-  // Silence Privy-internal React Key Warnings (Silence 'xe' child warning)
-  useEffect(() => {
-    if (process.env.NODE_ENV === "development") {
-      const originalError = console.error;
-      if (typeof originalError !== 'function') return;
-
-      console.error = (...args: any[]) => {
-        const msg = String(args[0] || '');
-        if (
-          msg.includes('Each child in a list should have a unique "key" prop') &&
-          (msg.includes('xe') || String(args[2] || '').includes('xe'))
-        ) {
-          return;
-        }
-        originalError.apply(console, args);
-      };
-      return () => { console.error = originalError; };
-    }
-  }, []);
-
   // Robust Solana Address Detection (Priority: Adapter > Privy User)
   const derivedAddress = useMemo(() => {
     if (publicKey) return publicKey.toBase58();
     const linkedAccounts = (user?.linkedAccounts ?? []) as SolanaLinkedAccount[];
-    const solAccount = linkedAccounts.find(
-      (account) => (account.type === "wallet" && account.chainType === "solana") || account.type === "solana_wallet"
-    );
+    const solAccount = linkedAccounts.find((account) => {
+      if (account.type === "solana_wallet") return true;
+      if (account.type !== "wallet") return false;
+      const normalizedChainType = (account.chainType ?? "").toLowerCase();
+      return normalizedChainType === "solana" || normalizedChainType.startsWith("solana:");
+    });
     return solAccount?.address || "";
   }, [publicKey, user]);
 
