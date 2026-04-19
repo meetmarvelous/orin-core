@@ -18,18 +18,16 @@ import {
   ConnectionProvider,
   WalletProvider,
 } from "@solana/wallet-adapter-react";
-import { clusterApiUrl } from "@solana/web3.js";
 
 interface Props {
   children: React.ReactNode;
 }
 
 export default function SolanaWalletProvider({ children }: Props) {
-  const endpoint = useMemo(
-    () =>
-      process.env.NEXT_PUBLIC_RPC_ENDPOINT || clusterApiUrl("devnet"),
-    []
-  );
+  const endpoint = useMemo(() => process.env.NEXT_PUBLIC_RPC_ENDPOINT || "", []);
+  if (!endpoint) {
+    throw new Error("Missing NEXT_PUBLIC_RPC_ENDPOINT");
+  }
 
   // Empty array — Privy's toSolanaWalletConnectors handles wallet injection.
   // Privy bridges both external (Phantom/Solflare) and embedded wallets

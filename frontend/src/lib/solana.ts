@@ -15,7 +15,6 @@ import {
   ConnectionConfig,
   PublicKey,
   SystemProgram,
-  clusterApiUrl,
 } from "@solana/web3.js";
 import { ORIN_PROGRAM_ID } from "./pda";
 
@@ -24,9 +23,11 @@ type ProviderWalletLike = {
   signAllTransactions?: (txs: any[]) => Promise<any[]>;
 };
 
-/** Solana Devnet RPC endpoint */
-const RPC_ENDPOINT =
-  process.env.NEXT_PUBLIC_RPC_ENDPOINT || clusterApiUrl("devnet");
+/** Solana RPC endpoint (required) */
+const RPC_ENDPOINT = process.env.NEXT_PUBLIC_RPC_ENDPOINT;
+if (!RPC_ENDPOINT) {
+  console.error("FATAL: NEXT_PUBLIC_RPC_ENDPOINT is missing. Transaction flows will fail.");
+}
 const RPC_WS_ENDPOINT = process.env.NEXT_PUBLIC_RPC_WS_ENDPOINT;
 let sharedConnection: Connection | null = null;
 
@@ -34,6 +35,9 @@ let sharedConnection: Connection | null = null;
  * Creates a Solana Connection instance for Devnet.
  */
 export function getConnection(): Connection {
+  if (!RPC_ENDPOINT) {
+    throw new Error("Missing RPC Endpoint");
+  }
   if (!sharedConnection) {
     const config: ConnectionConfig = {
       commitment: "confirmed",
@@ -72,26 +76,32 @@ export function getProgram(provider: AnchorProvider, idl: Idl): Program {
  * Some Privy/wallet-adapter bridges expose `signAllTransactions` but not `signTransaction`.
  */
 async function signTxWithProviderWallet(program: Program, tx: any): Promise<any> {
-  const wallet = (program.provider as any)?.wallet as ProviderWalletLike | undefined;
-  if (!wallet) {
-    throw new Error("Wallet signer not available on Anchor provider.");
-  }
-
-  if (typeof wallet.signTransaction === "function") {
-    return wallet.signTransaction(tx);
-  }
-
-  if (typeof wallet.signAllTransactions === "function") {
-    const signed = await wallet.signAllTransactions([tx]);
-    if (!signed?.[0]) {
-      throw new Error("Wallet returned no signed transaction.");
+  try {
+    const wallet = (program.provider as any)?.wallet as ProviderWalletLike | undefined;
+    if (!wallet) {
+      throw new Error("Wallet signer not available on Anchor provider.");
     }
-    return signed[0];
-  }
 
-  throw new Error(
-    "Connected wallet does not support transaction signing (signTransaction/signAllTransactions)."
-  );
+    if (typeof wallet.signTransaction === "function") {
+      return await wallet.signTransaction(tx);
+    }
+
+    if (typeof wallet.signAllTransactions === "function") {
+      const signed = await wallet.signAllTransactions([tx]);
+      if (!signed?.[0]) {
+        throw new Error("Wallet returned no signed transaction.");
+      }
+      return signed[0];
+    }
+
+    throw new Error(
+      "Connected wallet does not support transaction signing (signTransaction/signAllTransactions)."
+    );
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[ORIN] Signing failed gracefully:", message);
+    throw new Error(`Signing failed: ${message}`);
+  }
 }
 
 /**

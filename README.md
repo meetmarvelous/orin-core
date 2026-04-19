@@ -1,6 +1,6 @@
 # ORIN Core
 
-> **Every space knows your song.**
+> **Every space knows you.**
 
 ORIN is a revolutionary DePIN protocol that recognizes users across physical spaces (hotels, homes, and cars) and automatically synchronizes their environment to their saved preferences via Solana-based identities.
 

@@ -26,7 +26,10 @@ interface Props {
 }
 
 export default function PrivyClientProvider({ children }: Props) {
-  const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID || "cmntw2veg01oq0dl164738c9z";
+  const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
+  if (!appId) {
+    throw new Error("Missing NEXT_PUBLIC_PRIVY_APP_ID");
+  }
 
   return (
     <PrivyProvider

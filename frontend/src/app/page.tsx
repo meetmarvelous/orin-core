@@ -318,7 +318,7 @@ const LandingPage = () => {
           <h1 className="text-6xl md:text-8xl font-light tracking-tighter font-serif leading-none">ORIN</h1>
           <p className="text-accent font-mono text-[9px] md:text-xs uppercase tracking-[0.4em] md:tracking-[0.6em] font-bold">Your Personal AI Concierge</p>
           <p className="text-text-secondary text-base md:text-xl font-light font-serif opacity-60 italic mt-4">
-            Every space knows your song.
+            Every space knows you.
           </p>
         </div>
       </motion.div>
@@ -334,13 +334,10 @@ const LandingPage = () => {
             <Wallet size={16} />
             {!ready ? "Loading..." : "Sign In to ORIN"}
           </button>
-          <p className="text-text-muted text-[10px] font-mono uppercase tracking-widest px-8">
-            Email · X (Twitter) · Phantom · Solflare
-          </p>
         </div>
       </motion.div>
 
-      <motion.div variants={itemVariants} className="mt-16 md:mt-24 grid grid-cols-1 sm:grid-cols-3 gap-8 md:gap-12 w-full max-w-2xl px-4">
+      <motion.div variants={itemVariants} className="mt-10 md:mt-14 grid grid-cols-1 sm:grid-cols-3 gap-8 md:gap-12 w-full max-w-2xl px-4">
         {[
           { icon: Brain, label: "AI Agent" },
           { icon: Fingerprint, label: "On-Chain Identity" },
