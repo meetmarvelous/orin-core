@@ -298,8 +298,14 @@ export async function fetchDeviceStatus(guestPda: string): Promise<RoomDeviceSta
     throw new Error(`Device status API error (${response.status}): ${errorBody}`);
   }
 
-  const data: DeviceStatusResponse = await response.json();
-  return data.device;
+  const data = (await response.json()) as DeviceStatusResponse | RoomDeviceState;
+  const normalizedDevice = (data as DeviceStatusResponse).device ?? (data as RoomDeviceState);
+
+  if (!normalizedDevice || typeof normalizedDevice !== "object") {
+    throw new Error("Device status API returned malformed payload: missing device state.");
+  }
+
+  return normalizedDevice;
 }
 
 /**
@@ -506,4 +512,3 @@ export function buildBookingSummary(
     currency: selectedOption.currency,
   };
 }
-
