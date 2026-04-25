@@ -61,15 +61,17 @@ import {
   fetchFastVoiceReply,
   fetchDeviceStatus,
   fetchTtsAudio,
+  fetchCuratedStays,
+  buildBookingSummary,
   updateGuestAvatar,
   fetchGuestProfileApi,
+  type CuratedSearchRequest,
   type GuestProfileApiResponse,
 } from "../lib/api";
 import { saveManualPreferences, saveVoicePreferences, getRelayOpts, RoomPreferences } from "../lib/savePreferences";
 import { getProgram, getProvider, initializeGuestOnChain, fetchGuestProfile, getConnection } from "../lib/solana";
 import { deriveGuestPda } from "../lib/pda";
 import type { BookingSummary, CuratedStayOption, CuratedStayResponse } from "../lib/curatedBookingContract";
-import { MOCK_CURATED_STAY_RESPONSE, buildMockBookingSummary } from "../lib/curatedBookingMock";
 import idl from "../../idl/orin_identity.json";
 
 // --- Theme Context ---
@@ -555,6 +557,19 @@ const Dashboard = ({
   const [curatedResponse, setCuratedResponse] = useState<CuratedStayResponse | null>(null);
   const [selectedStay, setSelectedStay] = useState<CuratedStayOption | null>(null);
   const [bookingSummary, setBookingSummary] = useState<BookingSummary | null>(null);
+  const [searchParams, setSearchParams] = useState<{
+    checkIn: string;
+    checkOut: string;
+    guests: number;
+    cityLat: number;
+    cityLng: number;
+  }>({
+    checkIn: "2026-06-10",
+    checkOut: "2026-06-13",
+    guests: 2,
+    cityLat: 40.7128,
+    cityLng: -74.006,
+  });
 
   // Anti-Flicker Guard: Prevents stale ground-truth from overwriting recent user changes
   const lastInteractionRef = useRef<number>(0);
@@ -649,23 +664,52 @@ const Dashboard = ({
     );
   }, []);
 
-  const handleCuratedBookingIntent = useCallback((userInput: string) => {
+  const handleCuratedBookingIntent = useCallback(async (
+    userInput: string,
+    options?: { appendUserMessage?: boolean }
+  ) => {
     setActiveTab("assistant");
-    appendChatMessage("user", userInput);
-    const response = MOCK_CURATED_STAY_RESPONSE;
-    setCuratedResponse(response);
-    setSelectedStay(null);
-    setBookingSummary(null);
-    setBookingFlowStage("options");
-    appendChatMessage(
-      "orin",
-      `${response.conversationSummary}\n\nI selected ${response.options.length} curated stays for you. Choose one and I'll prepare the booking summary.`
-    );
-    appendChatCard({ type: "curated-options", options: [...response.options] });
-  }, [appendChatCard, appendChatMessage]);
+    if (options?.appendUserMessage !== false) {
+      appendChatMessage("user", userInput);
+    }
+    const loadingId = appendChatMessage("orin", "Searching for curated stays...");
+    try {
+      const response = await fetchCuratedStays({
+        check_in_date: searchParams.checkIn,
+        check_out_date: searchParams.checkOut,
+        guests: searchParams.guests,
+        location: { latitude: searchParams.cityLat, longitude: searchParams.cityLng },
+        conversation_summary: userInput,
+        loyalty_points: getNumericValue(profileData?.loyaltyPoints ?? profileData?.loyalty_points),
+      } satisfies CuratedSearchRequest);
+
+      replaceChatMessage(
+        loadingId,
+        `${response.conversationSummary}\n\nI selected ${response.options.length} curated stays for you. Choose one and I'll prepare the booking summary.`
+      );
+
+      setCuratedResponse(response);
+      setSelectedStay(null);
+      setBookingSummary(null);
+      setBookingFlowStage("options");
+      appendChatCard({ type: "curated-options", options: [...response.options] });
+    } catch (err) {
+      replaceChatMessage(
+        loadingId,
+        `Sorry, I couldn't find available hotels right now. ${getErrorMessage(err)}`
+      );
+      setBookingFlowStage("idle");
+    }
+  }, [appendChatCard, appendChatMessage, profileData, replaceChatMessage, searchParams]);
 
   const handleSelectCuratedStay = useCallback((option: CuratedStayOption) => {
-    const summary = buildMockBookingSummary(option);
+    const summary = buildBookingSummary(
+      option,
+      searchParams.checkIn,
+      searchParams.checkOut,
+      searchParams.guests,
+      getNumericValue(profileData?.loyaltyPoints ?? profileData?.loyalty_points)
+    );
     setSelectedStay(option);
     setBookingSummary(summary);
     setBookingFlowStage("confirmation");
@@ -678,7 +722,7 @@ const Dashboard = ({
       selectedStay: option,
       bookingSummary: summary,
     });
-  }, [appendChatCard, appendChatMessage]);
+  }, [appendChatCard, appendChatMessage, profileData, searchParams.checkIn, searchParams.checkOut, searchParams.guests]);
 
   const handleConfirmCuratedStay = useCallback(() => {
     if (!selectedStay || !bookingSummary) return;
@@ -1085,7 +1129,7 @@ const Dashboard = ({
       return;
     }
     if (isCuratedBookingIntent(trimmedInput)) {
-      handleCuratedBookingIntent(trimmedInput);
+      void handleCuratedBookingIntent(trimmedInput);
       setChatInput("");
       return;
     }
@@ -1220,7 +1264,7 @@ const Dashboard = ({
             } else if (bookingFlowStage === "payment" && isBookingApprovalIntent(text)) {
               handleFinalizeCuratedBooking();
             } else if (isCuratedBookingIntent(text)) {
-              handleCuratedBookingIntent(text);
+              void handleCuratedBookingIntent(text, { appendUserMessage: false });
             } else {
               handleVoiceCommand(text);
             }
@@ -1634,13 +1678,13 @@ const Dashboard = ({
         </div>
         <div className="flex flex-wrap gap-2 pt-2 px-1">
           <button
-            onClick={() => handleCuratedBookingIntent("ORIN, recommend curated stays for my trip.")}
+            onClick={() => { void handleCuratedBookingIntent("ORIN, recommend curated stays for my trip."); }}
             className="text-[10px] px-3 py-1.5 rounded-full border border-border text-text-muted hover:text-accent hover:border-accent/40 transition-colors"
           >
             Recommend stays
           </button>
           <button
-            onClick={() => handleCuratedBookingIntent("Show me premium hotel options for two nights.")}
+            onClick={() => { void handleCuratedBookingIntent("Show me premium hotel options for two nights."); }}
             className="text-[10px] px-3 py-1.5 rounded-full border border-border text-text-muted hover:text-accent hover:border-accent/40 transition-colors"
           >
             Premium options
@@ -2271,4 +2315,3 @@ export default function App() {
   </ThemeContext.Provider>
   );
 }
-
