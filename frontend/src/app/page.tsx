@@ -939,7 +939,7 @@ const Dashboard = ({
     // Initial welcome announcement using the production-grade TTS pipeline
     const playWelcome = async () => {
         try {
-            const welcome = await fetchTtsAudio(`Welcome to your private residence, ${guestName}. I am ORIN, your personal AI concierge. All systems are online.`);
+            const welcome = await fetchTtsAudio(`Welcome back, ${guestName}. I'm ORIN, your personal AI concierge. All systems are online.`);
             playAudio(welcome.audioBase64, welcome.mimeType);
         } catch (e) {
             console.warn(`[ORIN] Failed to play property welcome: ${getErrorMessage(e)}`);
