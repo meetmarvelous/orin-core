@@ -124,6 +124,7 @@ type ChatMessage = {
   card?: ChatCard;
 };
 type BookingFlowStage = "idle" | "options" | "confirmation" | "payment";
+type PaymentMethod = "pusd" | "mastercard";
 type CanonicalRoomState = {
   temp?: number;
   lighting?: "warm" | "cold" | "ambient";
@@ -338,7 +339,7 @@ const LandingPage = () => {
         </div>
       </motion.div>
 
-      <motion.div variants={itemVariants} className="w-full max-w-[280px] sm:max-w-sm space-y-6 mt-10 md:mt-12">
+      <motion.div variants={itemVariants} className="w-full max-w-[280px] sm:max-w-sm mt-10 md:mt-12">
         <div className="flex flex-col items-center gap-4">
           {/* Privy Login — Sole Auth Method (Email, X, Wallet) */}
           <button
@@ -349,9 +350,6 @@ const LandingPage = () => {
             <Wallet size={16} />
             {!ready ? "Loading..." : "Sign In to ORIN"}
           </button>
-          <p className="text-text-muted text-[10px] uppercase tracking-[0.2em]">
-            Email sign-in: check your email for a 4 digit code
-          </p>
         </div>
       </motion.div>
 
@@ -557,6 +555,7 @@ const Dashboard = ({
   const [curatedResponse, setCuratedResponse] = useState<CuratedStayResponse | null>(null);
   const [selectedStay, setSelectedStay] = useState<CuratedStayOption | null>(null);
   const [bookingSummary, setBookingSummary] = useState<BookingSummary | null>(null);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<PaymentMethod | null>(null);
   const [searchParams, setSearchParams] = useState<{
     checkIn: string;
     checkOut: string;
@@ -575,13 +574,13 @@ const Dashboard = ({
   const lastInteractionRef = useRef<number>(0);
   const setInteractionTimestamp = () => { lastInteractionRef.current = Date.now(); };
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
-    createChatMessage("orin", `Welcome, ${guestName}. I'm ORIN, your personal AI concierge. How can I help you today?`, "welcome"),
+    createChatMessage("orin", `Welcome back, ${guestName}. I'm ORIN, your personal AI concierge. All systems are online.`, "welcome"),
   ]);
   const [profileImage, setProfileImage] = useState<string | null>(null);
 
   useEffect(() => {
     setChatMessages([
-      createChatMessage("orin", `Welcome, ${guestName}. I'm ORIN, your personal AI concierge. How can I help you today?`, "welcome"),
+      createChatMessage("orin", `Welcome back, ${guestName}. I'm ORIN, your personal AI concierge. All systems are online.`, "welcome"),
     ]);
     setBookingFlowStage("idle");
     setCuratedResponse(null);
@@ -727,6 +726,7 @@ const Dashboard = ({
   const handleConfirmCuratedStay = useCallback(() => {
     if (!selectedStay || !bookingSummary) return;
     setBookingFlowStage("payment");
+    setSelectedPaymentMethod(null);
     appendChatMessage(
       "orin",
       `Booking payment summary is ready for ${selectedStay.hotelName}. ORIN points have been applied as a discount line.`
@@ -738,17 +738,17 @@ const Dashboard = ({
   }, [appendChatCard, appendChatMessage, bookingSummary, selectedStay]);
 
   const handleFinalizeCuratedBooking = useCallback(() => {
-    if (!selectedStay) return;
+    if (!selectedStay || !selectedPaymentMethod) return;
     const confirmationSignature = createMockConfirmationSignature();
     markPaymentCardApproved();
     appendChatMessage("user", "confirm");
     appendChatMessage(
       "orin",
-      `Booking confirmed for ${selectedStay.hotelName}. ORIN points applied as a discount.`
+      `Booking confirmed for ${selectedStay.hotelName}. Payment method: ${selectedPaymentMethod === "pusd" ? "$PUSD" : "Mastercard"}. ORIN points applied as a discount.`
     );
     appendChatMessage("orin", `Confirmation signature: ${confirmationSignature}`);
     setBookingFlowStage("idle");
-  }, [appendChatMessage, createMockConfirmationSignature, markPaymentCardApproved, selectedStay]);
+  }, [appendChatMessage, createMockConfirmationSignature, markPaymentCardApproved, selectedPaymentMethod, selectedStay]);
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -939,7 +939,7 @@ const Dashboard = ({
     // Initial welcome announcement using the production-grade TTS pipeline
     const playWelcome = async () => {
         try {
-            const welcome = await fetchTtsAudio(`Welcome to your private residence, ${guestName}. I am ORIN, your personal AI concierge. All systems are online.`);
+            const welcome = await fetchTtsAudio(`Welcome back, ${guestName}. I'm ORIN, your personal AI concierge. All systems are online.`);
             playAudio(welcome.audioBase64, welcome.mimeType);
         } catch (e) {
             console.warn(`[ORIN] Failed to play property welcome: ${getErrorMessage(e)}`);
@@ -1568,6 +1568,12 @@ const Dashboard = ({
               (() => {
                 const paymentSummary = msg.card.bookingSummary;
                 const isApproved = !!msg.card.approved;
+                const paymentMethodLabel =
+                  selectedPaymentMethod === "pusd"
+                    ? "$PUSD"
+                    : selectedPaymentMethod === "mastercard"
+                    ? "Mastercard"
+                    : null;
                 return (
                   <Card className="p-4 space-y-3 border-accent/20 w-[85%]">
                     <p className="text-text-muted text-[10px] font-mono uppercase tracking-widest">
@@ -1593,17 +1599,61 @@ const Dashboard = ({
                       Redeeming {paymentSummary.pointsRedemption.pointsUsed} ORIN points for{" "}
                       {formatCurrency(paymentSummary.pointsRedemption.discountAmount, paymentSummary.currency)} off
                     </p>
+                    <div className="space-y-2 pt-1">
+                      <p className="text-text-muted text-[10px] font-mono uppercase tracking-widest">
+                        Payment method
+                      </p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => setSelectedPaymentMethod("pusd")}
+                          disabled={isApproved}
+                          className={cn(
+                            "py-2 rounded-xl border text-xs font-semibold transition-colors",
+                            selectedPaymentMethod === "pusd"
+                              ? "border-accent bg-accent/15 text-accent"
+                              : "border-border text-text-secondary hover:border-accent/40",
+                            isApproved ? "opacity-70 cursor-not-allowed" : ""
+                          )}
+                        >
+                          $PUSD
+                        </button>
+                        <button
+                          onClick={() => setSelectedPaymentMethod("mastercard")}
+                          disabled={isApproved}
+                          className={cn(
+                            "py-2 rounded-xl border text-xs font-semibold transition-colors",
+                            selectedPaymentMethod === "mastercard"
+                              ? "border-accent bg-accent/15 text-accent"
+                              : "border-border text-text-secondary hover:border-accent/40",
+                            isApproved ? "opacity-70 cursor-not-allowed" : ""
+                          )}
+                        >
+                          Mastercard
+                        </button>
+                      </div>
+                      {paymentMethodLabel && (
+                        <p className="text-xs text-text-secondary">
+                          Selected: <span className="text-text-primary font-medium">{paymentMethodLabel}</span>
+                        </p>
+                      )}
+                    </div>
                     <button
                       onClick={handleFinalizeCuratedBooking}
-                      disabled={isApproved}
+                      disabled={isApproved || !selectedPaymentMethod}
                       className={cn(
                         "w-full py-2 rounded-xl text-sm font-bold transition-colors",
                         isApproved
                           ? "bg-card border border-border text-text-muted cursor-not-allowed"
+                          : !selectedPaymentMethod
+                          ? "bg-card border border-border text-text-muted cursor-not-allowed"
                           : "bg-accent text-[#332F2E]"
                       )}
                     >
-                      {isApproved ? "Booking approved" : "Final approval"}
+                      {isApproved
+                        ? "Booking approved"
+                        : selectedPaymentMethod
+                        ? "Final approval"
+                        : "Select payment method to continue"}
                     </button>
                   </Card>
                 );
