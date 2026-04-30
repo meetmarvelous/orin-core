@@ -343,12 +343,8 @@ app.post<{ Body: VoiceCommandBody }>("/api/v1/voice-command", async (request, re
     const aiHashHex = aiResult.hash.toString("hex");
 
     // Determine if the parsed command actually mutates the room into a valid state. 
-    // E.g., if AI just says "hello", temp is 0/null. We only request signatures for actual room mutations.
-    const temp = Number(aiResult.payload.temp);
-    const lighting = String(aiResult.payload.lighting).toLowerCase();
-    const isTempValid = (temp >= 16 && temp <= 32) || (temp >= 60 && temp <= 90); // Supports both Celsius and Fahrenheit
-    const isLightingValid = ["warm", "cold", "ambient"].includes(lighting);
-    const requiresSignature = isTempValid && isLightingValid;
+    // We now rely on the AI's intelligent 'action_required' boolean flag.
+    const requiresSignature = Boolean(aiResult.payload.action_required);
 
     // Stage it exactly like a manual bypass payload so the listener just verifies and executes
     await stateProvider.setDirectPayload(aiHashHex, aiResult.payload);

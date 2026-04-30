@@ -26,6 +26,7 @@ export interface OrinAgentOutput {
   music: string;
   services: string[];
   raw_response: string;
+  action_required: boolean;
 }
 
 const MUSIC_LIST = [
@@ -269,8 +270,9 @@ export class OrinAgent {
         "Personalize responses with guest context, especially loyalty points.",
         "If a 'persona' is present in the context, proactively adapt your device settings and tone to match their long-term habits.",
         "You MUST output only valid JSON with this exact schema and no extra keys:",
-        '{ "temp": number, "lighting": "warm" | "cold" | "ambient", "brightness": number, "music": string, "services": string[], "raw_response": string }',
+        '{ "temp": number, "lighting": "warm" | "cold" | "ambient", "brightness": number, "music": string, "services": string[], "raw_response": string, "action_required": boolean }',
         "`brightness` must be between 0 and 100. Default is 80 if not specified.",
+        "`action_required` MUST be true if you are changing ANY device settings or ordering services, and false if you are just answering a question or greeting.",
         `\`music\` MUST always be chosen from this list: ${MUSIC_LIST.join(", ")}. Pick the best match based on the guest's request and room ambiance.`,
         "The `raw_response` must be 15 words maximum.",
         "Do not output markdown, code fences, or any extra text.",
@@ -441,7 +443,7 @@ export class OrinAgent {
   private validateOutput(data: unknown): OrinAgentOutput {
     if (typeof data !== "object" || data === null) throw new Error("AI output is not a JSON object.");
     const obj = data as Record<string, unknown>;
-    const allowedKeys = new Set(["temp", "lighting", "brightness", "music", "services", "raw_response"]);
+    const allowedKeys = new Set(["temp", "lighting", "brightness", "music", "services", "raw_response", "action_required"]);
     const keys = Object.keys(obj);
 
     for (const key of keys) if (!allowedKeys.has(key)) throw new Error(`AI output has unsupported key: ${key}`);
@@ -453,6 +455,7 @@ export class OrinAgent {
     if (typeof obj.music !== "string" || (obj.music !== "" && !MUSIC_LIST.includes(obj.music))) throw new Error(`AI output 'music' must be a string from the approved list or "" if music is off.`);
     if (!Array.isArray(obj.services) || !obj.services.every((v) => typeof v === "string")) throw new Error("AI output 'services' must be string[].");
     if (typeof obj.raw_response !== "string") throw new Error("AI output 'raw_response' must be a string.");
+    if (typeof obj.action_required !== "boolean") throw new Error("AI output 'action_required' must be a boolean.");
 
     return { 
       temp: obj.temp, 
@@ -460,7 +463,8 @@ export class OrinAgent {
       brightness: obj.brightness,
       music: obj.music,
       services: obj.services, 
-      raw_response: obj.raw_response 
+      raw_response: obj.raw_response,
+      action_required: obj.action_required
     };
   }
 }
