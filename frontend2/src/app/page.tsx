@@ -1,0 +1,792 @@
+"use client";
+
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
+import { AnimatePresence, motion } from "framer-motion";
+import { Idl } from "@coral-xyz/anchor";
+import { PublicKey, Transaction } from "@solana/web3.js";
+import { useWallet } from "@solana/wallet-adapter-react";
+import { usePrivy } from "@privy-io/react-auth";
+import { useSignTransaction as usePrivySignTransaction, useWallets as usePrivySolanaWallets } from "@privy-io/react-auth/solana";
+import { BedDouble, Camera, Check, ChevronLeft, Home, Lightbulb, LogOut, MapPin, MessageCircle, Mic, Music, Send, Sparkles, Thermometer, Ticket, UserRound, Wallet, Zap } from "lucide-react";
+
+import { BrandWordmark, ConsentArt } from "./orin-ui";
+import {
+  buildBookingSummary,
+  fetchCuratedStays,
+  fetchDeviceStatus,
+  fetchFastVoiceReply,
+  fetchGuestProfileApi,
+  fetchTtsAudio,
+  updateGuestAvatar,
+  type BookingSummary,
+  type CuratedSearchRequest,
+  type CuratedStayOption,
+  type GuestProfileRecord,
+} from "../lib/api";
+import { deriveGuestPda } from "../lib/pda";
+import { getConnection, getProgram, getProvider } from "../lib/solana";
+import { saveManualPreferences, saveVoicePreferences, type RoomPreferences } from "../lib/savePreferences";
+import { cn } from "../lib/utils";
+import idl from "../../idl/orin_identity.json";
+
+type AppView = "landing" | "onboarding" | "dashboard";
+type Tab = "home" | "chat" | "booking" | "room" | "profile";
+type PaymentMethod = "pusd" | "mastercard";
+type LightingMode = "warm" | "cold" | "ambient";
+type ChatCard =
+  | { type: "stays"; options: CuratedStayOption[] }
+  | { type: "confirmation"; option: CuratedStayOption; summary: BookingSummary }
+  | { type: "payment"; summary: BookingSummary; approved?: boolean };
+type ChatMessage = { id: string; role: "orin" | "user"; text?: string; card?: ChatCard };
+type SolanaLinkedAccount = { type?: string; address?: string; chainType?: string };
+type SignerWallet = {
+  publicKey: PublicKey;
+  signTransaction?: (tx: Transaction) => Promise<Transaction>;
+  signAllTransactions?: (txs: Transaction[]) => Promise<Transaction[]>;
+};
+
+const searchDefaults: CuratedSearchRequest = {
+  check_in_date: "2026-06-10",
+  check_out_date: "2026-06-12",
+  guests: 2,
+  location: { latitude: 40.7128, longitude: -74.006, radius: 10 },
+  conversation_summary: "Premium calm hotel stay with strong WiFi and personalized room setup.",
+  loyalty_points: 0,
+};
+
+const preferenceSteps = [
+  { id: "vibe", label: "Stay mood", options: ["Calm luxury", "Business focus", "Nightlife ready"] },
+  { id: "arrival", label: "Arrival setup", options: ["Warm lights", "Cool and quiet", "Bright workspace"] },
+  { id: "sound", label: "Default sound", options: ["Morning jazz", "Ambient calm", "No music"] },
+] as const;
+
+const newId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+const getErrorMessage = (error: unknown) => error instanceof Error ? error.message : String(error);
+const getNumericValue = (value: unknown) => {
+  if (typeof value === "number") return value;
+  if (typeof value === "string") return Number(value) || 0;
+  if (value && typeof value === "object" && "toNumber" in value) {
+    const maybeFn = (value as { toNumber?: unknown }).toNumber;
+    if (typeof maybeFn === "function") return maybeFn.call(value) as number;
+  }
+  return 0;
+};
+
+function formatCurrency(amount: number, currency: string) {
+  try {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 0 }).format(amount);
+  } catch {
+    return `${currency} ${amount}`;
+  }
+}
+
+function renderTextWithLinks(text: string) {
+  const parts = text.split(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g);
+  return parts.map((part, index) => {
+    if (index % 3 === 1) {
+      const href = parts[index + 1];
+      return <a key={`${part}-${href}`} className="chat-link" href={href} target="_blank" rel="noreferrer">{part}</a>;
+    }
+    if (index % 3 === 2) return null;
+    return part;
+  });
+}
+
+function playAudio(audioBase64: string, mimeType: string) {
+  const audio = new Audio(`data:${mimeType};base64,${audioBase64}`);
+  return audio.play().catch(() => undefined);
+}
+
+export default function Frontend2App() {
+  const walletAdapter = useWallet();
+  const { authenticated, login, logout, ready, user } = usePrivy();
+  const { wallets: privySolanaWallets } = usePrivySolanaWallets();
+  const { signTransaction: signPrivyTransaction } = usePrivySignTransaction();
+
+  const [view, setView] = useState<AppView>("landing");
+  const [activeTab, setActiveTab] = useState<Tab>("home");
+  const [guestName, setGuestName] = useState("");
+  const [profile, setProfile] = useState<GuestProfileRecord | null>(null);
+  const [profileImage, setProfileImage] = useState<string | null>(null);
+  const [onboardingName, setOnboardingName] = useState("");
+  const [onboardingStep, setOnboardingStep] = useState(0);
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+
+  const [temp, setTemp] = useState(22);
+  const [brightness, setBrightness] = useState(80);
+  const [lighting, setLighting] = useState<LightingMode>("warm");
+  const [music, setMusic] = useState("Jazz");
+  const [musicOn, setMusicOn] = useState(true);
+  const [isSavingRoom, setIsSavingRoom] = useState(false);
+
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    { id: "welcome", role: "orin", text: "Welcome back. I'm ORIN, your personal AI concierge. All systems are online." },
+  ]);
+  const [chatInput, setChatInput] = useState("");
+  const [isChatBusy, setIsChatBusy] = useState(false);
+  const [selectedStay, setSelectedStay] = useState<CuratedStayOption | null>(null);
+  const [bookingSummary, setBookingSummary] = useState<BookingSummary | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>(null);
+  const [bookingApproved, setBookingApproved] = useState(false);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const lastLocalRoomEditAt = useRef(0);
+
+  const derivedAddress = useMemo(() => {
+    if (walletAdapter.publicKey) return walletAdapter.publicKey.toBase58();
+    const linkedAccounts = (user?.linkedAccounts ?? []) as SolanaLinkedAccount[];
+    const solanaAccount = linkedAccounts.find((account) => {
+      if (account.type === "solana_wallet") return true;
+      if (account.type !== "wallet") return false;
+      const chainType = (account.chainType ?? "").toLowerCase();
+      return chainType === "solana" || chainType.startsWith("solana:");
+    });
+    return solanaAccount?.address ?? "";
+  }, [user, walletAdapter.publicKey]);
+
+  const effectivePublicKey = useMemo(() => {
+    if (!derivedAddress) return null;
+    try {
+      return new PublicKey(derivedAddress);
+    } catch {
+      return null;
+    }
+  }, [derivedAddress]);
+
+  const privySignerWallet = useMemo(() => {
+    if (!effectivePublicKey) return null;
+    const address = effectivePublicKey.toBase58().toLowerCase();
+    return privySolanaWallets.find((wallet) => wallet.address.toLowerCase() === address) ?? null;
+  }, [effectivePublicKey, privySolanaWallets]);
+
+  const signerWallet = useMemo<SignerWallet | null>(() => {
+    if (walletAdapter.publicKey && (walletAdapter.signTransaction || walletAdapter.signAllTransactions)) {
+      return {
+        publicKey: walletAdapter.publicKey,
+        signTransaction: walletAdapter.signTransaction,
+        signAllTransactions: walletAdapter.signAllTransactions,
+      };
+    }
+    if (effectivePublicKey && privySignerWallet) {
+      return {
+        publicKey: effectivePublicKey,
+        signTransaction: async (tx: Transaction) => {
+          const signed = await signPrivyTransaction({
+            transaction: tx.serialize({ requireAllSignatures: false, verifySignatures: false }),
+            wallet: privySignerWallet,
+          });
+          return Transaction.from(signed.signedTransaction);
+        },
+      };
+    }
+    return null;
+  }, [effectivePublicKey, privySignerWallet, signPrivyTransaction, walletAdapter.publicKey, walletAdapter.signAllTransactions, walletAdapter.signTransaction]);
+
+  const guestPda = useMemo(() => {
+    if (!effectivePublicKey || !guestName.trim()) return null;
+    return deriveGuestPda(guestName.trim(), effectivePublicKey).pda;
+  }, [effectivePublicKey, guestName]);
+
+  const walletLabel = derivedAddress ? `${derivedAddress.slice(0, 4)}...${derivedAddress.slice(-4)}` : "Privy wallet";
+  const loyaltyPoints = getNumericValue(profile?.loyaltyPoints ?? profile?.loyalty_points);
+  const persona = typeof profile?.persona === "string" && profile.persona.trim()
+    ? profile.persona
+    : "ORIN is building your long-term hospitality memory from each stay.";
+  const roomPrefs = useMemo<RoomPreferences>(() => ({
+    temp,
+    lighting,
+    brightness,
+    music: musicOn ? music : "",
+  }), [brightness, lighting, music, musicOn, temp]);
+
+  const appendMessage = useCallback((message: Omit<ChatMessage, "id">) => {
+    const id = newId();
+    setMessages((current) => [...current, { id, ...message }]);
+    return id;
+  }, []);
+
+  const replaceMessage = useCallback((id: string, patch: Partial<ChatMessage>) => {
+    setMessages((current) => current.map((message) => message.id === id ? { ...message, ...patch } : message));
+  }, []);
+
+  const markLocalRoomEdit = useCallback(() => {
+    lastLocalRoomEditAt.current = Date.now();
+  }, []);
+
+  const updateTemp = useCallback((value: number) => {
+    markLocalRoomEdit();
+    setTemp(value);
+  }, [markLocalRoomEdit]);
+
+  const updateBrightness = useCallback((value: number) => {
+    markLocalRoomEdit();
+    setBrightness(value);
+  }, [markLocalRoomEdit]);
+
+  const updateLighting = useCallback((value: LightingMode) => {
+    markLocalRoomEdit();
+    setLighting(value);
+  }, [markLocalRoomEdit]);
+
+  const updateMusic = useCallback((value: string) => {
+    markLocalRoomEdit();
+    setMusic(value);
+  }, [markLocalRoomEdit]);
+
+  const updateMusicOn = useCallback((value: boolean) => {
+    markLocalRoomEdit();
+    setMusicOn(value);
+  }, [markLocalRoomEdit]);
+
+  const syncRoomState = useCallback((state: Awaited<ReturnType<typeof fetchDeviceStatus>>) => {
+    if (Date.now() - lastLocalRoomEditAt.current < 3000) return;
+    if (state.nest?.temp !== undefined) setTemp(Number(state.nest.temp));
+    if (state.hue?.brightness !== undefined) setBrightness(Number(state.hue.brightness));
+    if (state.lighting) setLighting(state.lighting);
+    if (typeof state.music === "string") {
+      setMusic(state.music || "Jazz");
+      setMusicOn(Boolean(state.music));
+    }
+  }, []);
+
+  const refreshGroundTruth = useCallback(async () => {
+    if (!guestPda) return;
+    try {
+      const state = await fetchDeviceStatus(guestPda.toBase58());
+      syncRoomState(state);
+    } catch (error) {
+      console.warn(`[ORIN] Device status sync failed: ${getErrorMessage(error)}`);
+    }
+  }, [guestPda, syncRoomState]);
+
+  useEffect(() => {
+    document.documentElement.classList.add("light");
+  }, []);
+
+  useEffect(() => {
+    if (!authenticated) {
+      setView("landing");
+      return;
+    }
+    const storedName = derivedAddress ? localStorage.getItem(`orin_frontend2_name_${derivedAddress}`) : null;
+    if (storedName) {
+      setGuestName(storedName);
+      setView("dashboard");
+    } else {
+      setView("onboarding");
+    }
+  }, [authenticated, derivedAddress]);
+
+  useEffect(() => {
+    if (!guestPda) return;
+    let cancelled = false;
+    fetchGuestProfileApi(guestPda.toBase58())
+      .then((response) => {
+        if (cancelled) return;
+        if (response.profile) {
+          setProfile(response.profile);
+          if (response.profile.avatarUrl) setProfileImage(response.profile.avatarUrl);
+        }
+      })
+      .catch((error) => console.warn(`[ORIN] Profile sync failed: ${getErrorMessage(error)}`));
+    refreshGroundTruth();
+    const interval = window.setInterval(refreshGroundTruth, 30000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [guestPda, refreshGroundTruth]);
+
+  useEffect(() => {
+    if (!guestPda) return;
+    try {
+      const connection = getConnection();
+      const subscription = connection.onAccountChange(guestPda, () => {
+        void refreshGroundTruth();
+        void fetchGuestProfileApi(guestPda.toBase58()).then((response) => {
+          if (response.profile) setProfile(response.profile);
+        }).catch(() => undefined);
+      }, "confirmed");
+      return () => {
+        void connection.removeAccountChangeListener(subscription);
+      };
+    } catch (error) {
+      console.warn(`[ORIN] WebSocket listener unavailable: ${getErrorMessage(error)}`);
+    }
+  }, [guestPda, refreshGroundTruth]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, activeTab]);
+
+  const finishOnboarding = () => {
+    const finalName = onboardingName.trim() || "Guest";
+    setGuestName(finalName);
+    if (derivedAddress) localStorage.setItem(`orin_frontend2_name_${derivedAddress}`, finalName);
+    setMessages([{ id: "welcome", role: "orin", text: `Welcome back, ${finalName}. I'm ORIN, your personal AI concierge. All systems are online.` }]);
+    setActiveTab("home");
+    setView("dashboard");
+  };
+
+  const handleLogout = async () => {
+    await logout();
+    setGuestName("");
+    setProfile(null);
+    setView("landing");
+  };
+
+  const handleCuratedSearch = useCallback(async (input: string) => {
+    setActiveTab("chat");
+    setIsChatBusy(true);
+    appendMessage({ role: "user", text: input });
+    const loadingId = appendMessage({ role: "orin", text: "Searching live curated stays for your profile..." });
+    try {
+      const response = await fetchCuratedStays({ ...searchDefaults, conversation_summary: input, loyalty_points: loyaltyPoints } satisfies CuratedSearchRequest);
+      replaceMessage(loadingId, { text: `${response.conversationSummary}\n\nI found ${response.options.length} stays that match your ORIN memory.` });
+      appendMessage({ role: "orin", card: { type: "stays", options: [...response.options] } });
+      setActiveTab("booking");
+    } catch (error) {
+      replaceMessage(loadingId, { text: `I couldn't fetch stays yet: ${getErrorMessage(error)}` });
+    } finally {
+      setIsChatBusy(false);
+    }
+  }, [appendMessage, loyaltyPoints, replaceMessage]);
+
+  const selectStay = (option: CuratedStayOption) => {
+    const summary = buildBookingSummary(option, searchDefaults.check_in_date, searchDefaults.check_out_date, searchDefaults.guests, loyaltyPoints);
+    setSelectedStay(option);
+    setBookingSummary(summary);
+    setPaymentMethod(null);
+    setBookingApproved(false);
+    appendMessage({ role: "orin", text: `Great choice. I prepared a booking summary for ${option.hotelName}.` });
+    appendMessage({ role: "orin", card: { type: "confirmation", option, summary } });
+    setActiveTab("booking");
+  };
+
+  const showPayment = () => {
+    if (!bookingSummary) return;
+    appendMessage({ role: "orin", text: "Payment summary is ready. Choose $PUSD or Mastercard for final approval." });
+    appendMessage({ role: "orin", card: { type: "payment", summary: bookingSummary } });
+    setActiveTab("booking");
+  };
+
+  const finalizeBooking = () => {
+    if (!selectedStay || !paymentMethod) return;
+    setBookingApproved(true);
+    setMessages((current) => current.map((message) => message.card?.type === "payment" ? { ...message, card: { ...message.card, approved: true } } : message));
+    appendMessage({ role: "orin", text: `Booking confirmed for ${selectedStay.hotelName}. Payment method: ${paymentMethod === "pusd" ? "$PUSD" : "Mastercard"}. Confirmation: ORIN-${Date.now().toString(36).toUpperCase()}` });
+  };
+
+  const handleVoiceOrTextCommand = useCallback(async (input: string) => {
+    if (!input.trim()) return;
+    if (["hotel", "stay", "book", "travel"].some((word) => input.toLowerCase().includes(word))) {
+      await handleCuratedSearch(input);
+      setChatInput("");
+      return;
+    }
+
+    setActiveTab("chat");
+    setIsChatBusy(true);
+    appendMessage({ role: "user", text: input });
+    const responseId = appendMessage({ role: "orin", text: "I'm processing that with ORIN intelligence..." });
+
+    try {
+      const history = messages.slice(-6).map((message) => message.text ?? "");
+      const fast = await fetchFastVoiceReply({
+        userInput: input,
+        guestContext: { name: guestName, loyaltyPoints, history, currentPreferences: { temp, lighting, brightness, musicOn } },
+      });
+      if (fast.text) replaceMessage(responseId, { text: fast.text });
+      if (fast.audioBase64) void playAudio(fast.audioBase64, fast.mimeType);
+
+      if (!guestPda || !effectivePublicKey || !signerWallet) {
+        appendMessage({ role: "orin", text: "Wallet signer is not ready yet, so I handled the conversation but skipped blockchain state changes." });
+        return;
+      }
+
+      const provider = getProvider(signerWallet);
+      const program = getProgram(provider, idl as Idl);
+      const result = await saveVoicePreferences(
+        program,
+        guestPda,
+        effectivePublicKey,
+        input,
+        roomPrefs,
+        { name: guestName, loyaltyPoints, history, currentPreferences: roomPrefs },
+        guestName,
+        (text) => replaceMessage(responseId, { text })
+      );
+
+      if (result.aiResult) {
+        markLocalRoomEdit();
+        if (typeof result.aiResult.temp === "number") setTemp(result.aiResult.temp);
+        if (typeof result.aiResult.brightness === "number") setBrightness(result.aiResult.brightness);
+        if (result.aiResult.lighting) setLighting(result.aiResult.lighting);
+        if (typeof result.aiResult.music === "string") {
+          setMusic(result.aiResult.music || "Jazz");
+          setMusicOn(Boolean(result.aiResult.music));
+        }
+        if (result.aiResult.raw_response) {
+          fetchTtsAudio(result.aiResult.raw_response)
+            .then((tts) => playAudio(tts.audioBase64, tts.mimeType))
+            .catch(() => undefined);
+        }
+      }
+
+      if (result.solanaTxSignature) {
+        appendMessage({ role: "orin", text: `Signature confirmed: [${result.solanaTxSignature.slice(0, 12)}...](https://explorer.solana.com/tx/${result.solanaTxSignature}?cluster=devnet)` });
+      }
+      await refreshGroundTruth();
+    } catch (error) {
+      replaceMessage(responseId, { text: `API Error: ${getErrorMessage(error)}` });
+    } finally {
+      setIsChatBusy(false);
+      setChatInput("");
+    }
+  }, [appendMessage, brightness, effectivePublicKey, guestName, guestPda, handleCuratedSearch, lighting, loyaltyPoints, messages, musicOn, refreshGroundTruth, replaceMessage, roomPrefs, signerWallet, temp]);
+
+  const saveRoom = async () => {
+    if (!guestPda || !effectivePublicKey || !signerWallet) {
+      appendMessage({ role: "orin", text: "Wallet signer is not ready yet. Please reconnect through Privy and try again." });
+      setActiveTab("chat");
+      return;
+    }
+    setIsSavingRoom(true);
+    try {
+      const provider = getProvider(signerWallet);
+      const program = getProgram(provider, idl as Idl);
+      const result = await saveManualPreferences(program, guestPda, effectivePublicKey, roomPrefs, guestName);
+      const signature = result.solanaTxSignature
+        ? ` TX Signature: [${result.solanaTxSignature.slice(0, 12)}...](https://explorer.solana.com/tx/${result.solanaTxSignature}?cluster=devnet)`
+        : "";
+      appendMessage({ role: "orin", text: `Environment preferences synchronized. Transaction was subsidized by ORIN Relay (Gasless).${signature}` });
+      setActiveTab("chat");
+      window.setTimeout(() => void refreshGroundTruth(), 3500);
+    } catch (error) {
+      appendMessage({ role: "orin", text: `Error saving setup: ${getErrorMessage(error)}` });
+      setActiveTab("chat");
+    } finally {
+      setIsSavingRoom(false);
+    }
+  };
+
+  const handleAvatarChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const dataUrl = String(reader.result);
+      setProfileImage(dataUrl);
+      if (guestPda) updateGuestAvatar(guestPda.toBase58(), dataUrl).catch((error) => console.warn(`[ORIN] Avatar sync failed: ${getErrorMessage(error)}`));
+    };
+    reader.readAsDataURL(file);
+  };
+
+  if (view === "landing") return <Landing ready={ready} onLogin={login} />;
+  if (view === "onboarding") {
+    return (
+      <Onboarding
+        name={onboardingName}
+        setName={setOnboardingName}
+        step={onboardingStep}
+        setStep={setOnboardingStep}
+        answers={answers}
+        setAnswers={setAnswers}
+        onComplete={finishOnboarding}
+        onLogout={handleLogout}
+      />
+    );
+  }
+
+  return (
+    <main className="page-shell">
+      <div className={cn("mobile-frame auth-frame app-screen", `app-screen--${activeTab}`)}>
+        <header className="app-home-header dashboard-shell-header">
+          <BrandWordmark />
+          <div className="dashboard-actions">
+            <button className="profile-dot profile-link" onClick={() => setActiveTab("profile")} type="button" aria-label="Profile"><UserRound size={18} /></button>
+            <button className="profile-dot profile-link" onClick={handleLogout} type="button" aria-label="Sign out"><LogOut size={18} /></button>
+          </div>
+        </header>
+
+        <AnimatePresence mode="wait">
+          <motion.section key={activeTab} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} className={cn("dashboard-screen", `dashboard-screen--${activeTab}`)}>
+            {activeTab === "home" && <HomeScreen guestName={guestName} persona={persona} temp={temp} brightness={brightness} lighting={lighting} music={musicOn ? music : "Off"} onChat={() => setActiveTab("chat")} onRoom={() => setActiveTab("room")} onBook={() => void handleCuratedSearch("Recommend premium hotel stays that fit my ORIN profile.")} />}
+            {activeTab === "chat" && <ChatScreen messages={messages} input={chatInput} setInput={setChatInput} isBusy={isChatBusy} onSend={() => void handleVoiceOrTextCommand(chatInput)} onRecommend={() => void handleCuratedSearch("Recommend curated stays for two nights.")} onBack={() => setActiveTab("home")} messagesEndRef={messagesEndRef} />}
+            {activeTab === "booking" && <BookingScreen messages={messages} selectedStay={selectedStay} summary={bookingSummary} paymentMethod={paymentMethod} setPaymentMethod={setPaymentMethod} approved={bookingApproved} onSearch={() => void handleCuratedSearch("Show me premium hotel options for my next stay.")} onSelect={selectStay} onConfirm={showPayment} onFinalize={finalizeBooking} />}
+            {activeTab === "room" && <RoomScreen temp={temp} setTemp={updateTemp} brightness={brightness} setBrightness={updateBrightness} lighting={lighting} setLighting={updateLighting} music={music} setMusic={updateMusic} musicOn={musicOn} setMusicOn={updateMusicOn} isSaving={isSavingRoom} onSave={() => void saveRoom()} />}
+            {activeTab === "profile" && <ProfileScreen guestName={guestName} walletLabel={walletLabel} profileImage={profileImage} persona={persona} points={loyaltyPoints} temp={temp} brightness={brightness} lighting={lighting} music={musicOn ? music : "Off"} onAvatarChange={handleAvatarChange} />}
+          </motion.section>
+        </AnimatePresence>
+
+        <nav className="bottom-tab-bar" aria-label="Dashboard navigation">
+          {[
+            { id: "home" as const, label: "Home", icon: Home },
+            { id: "chat" as const, label: "ORIN", icon: MessageCircle },
+            { id: "booking" as const, label: "Book", icon: BedDouble },
+            { id: "room" as const, label: "Room", icon: Zap },
+            { id: "profile" as const, label: "Profile", icon: UserRound },
+          ].map((tab) => (
+            <button key={tab.id} className={cn("tab-button", activeTab === tab.id && "tab-button--active")} onClick={() => setActiveTab(tab.id)} type="button">
+              <tab.icon size={18} />
+              <span>{tab.label}</span>
+            </button>
+          ))}
+        </nav>
+      </div>
+    </main>
+  );
+}
+
+function Landing({ ready, onLogin }: { ready: boolean; onLogin: () => void }) {
+  const testimonials = [
+    {
+      quote: "THE MOMENT I ENTERED, I KNEW THIS PLACE UNDERSTOOD MY VIBE. THE MUSIC FLOWED LIKE A GREAT CONVERSATION.",
+      name: "JAMES SMITH",
+      role: "CREATIVE DIRECTOR, INNOVATE CO.",
+      avatar: "https://www.figma.com/api/mcp/asset/fa12c099-1d0e-42d9-8f98-6c0a7c77f1c8",
+    },
+    {
+      quote: "EVERY DETAIL HERE SPEAKS TO ME. IT'S AS IF THE SPACE WAS DESIGNED AROUND MY TASTES.",
+      name: "EMILY JOHNSON",
+      role: "CO-FOUNDER, ARTISAN STUDIOS",
+      avatar: "https://www.figma.com/api/mcp/asset/4b82b9a4-c4cc-4ec0-beb7-6dfc030e67d6",
+    },
+    {
+      quote: "IT'S LIKE THE ROOM REMEMBERED ME. THE MORNING PLAYLIST WAS EXACTLY WHAT I LISTENED TO AT HOME.",
+      name: "SOPHIA LEE",
+      role: "PRODUCT LEAD, FRAMEWORK",
+      avatar: "https://www.figma.com/api/mcp/asset/0cbd5339-a085-4fba-bc4d-0ef36e171c68",
+    },
+  ];
+
+  const features = [
+    { title: "AI Concierge", description: "Talk and type naturally while ORIN understands the full stay context.", icon: Mic },
+    { title: "Room Control", description: "Lighting, temperature, and music handled instantly and quietly.", icon: Zap },
+    { title: "Personalized Experience", description: "Your preferences follow you across every ORIN-powered hotel.", icon: UserRound },
+    { title: "Instant Booking", description: "Find and confirm stays that match your exact style in seconds.", icon: BedDouble },
+    { title: "24/7 Customer Support", description: "Immediate assistance at any hour, directly inside the assistant.", icon: MessageCircle },
+  ];
+
+  const footerColumns = [
+    { title: "PRODUCTS", links: ["Features", "How it works", "Rewards"] },
+    { title: "COMPANY", links: ["About", "Contacts"] },
+    { title: "RESOURCES", links: ["Help center", "Privacy"] },
+  ];
+
+  return (
+    <main className="page-shell">
+      <div className="mobile-frame landing-frame">
+        <header className="top-header">
+          <BrandWordmark />
+          <button className="menu-button" aria-label="Sign in" onClick={onLogin} type="button"><Wallet size={22} /></button>
+        </header>
+        <section className="hero-section hero-section--auth-entry">
+          <div className="eyebrow-pill">AI-powered stays, personalized for you</div>
+          <h1>Your Personal AI Concierge</h1>
+          <p className="hero-copy hero-copy--entry">Every hotel already knows you.</p>
+          <div className="hero-visual"><img src="https://www.figma.com/api/mcp/asset/cc40d28a-5042-49af-95bd-b2ff6fa11fdc" alt="ORIN app preview" /></div>
+          <div className="cta-stack cta-stack--entry">
+            <button className="primary-button primary-button--entry" onClick={onLogin} disabled={!ready} type="button">{ready ? "Sign In to ORIN" : "Loading Privy..."}</button>
+            <p className="landing-auth-note">Continue with wallet, email, or X.</p>
+          </div>
+        </section>
+        <div className="soft-divider" />
+        <section className="testimonial-section">
+          <h2>Feels like the room already knows me</h2>
+          <div className="testimonial-list">
+            {testimonials.map((item) => (
+              <article className="testimonial-card" key={item.name}>
+                <p className="testimonial-quote">"{item.quote}"</p>
+                <div className="testimonial-rule" />
+                <div className="testimonial-user">
+                  <img src={item.avatar} alt={item.name} />
+                  <div>
+                    <strong>{item.name}</strong>
+                    <span>{item.role}</span>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+        <section className="feature-section">
+          <h2>How ORIN makes every stay feel like yours</h2>
+          <div className="feature-list">
+            {features.map((feature) => (
+              <article className="feature-row" key={feature.title}>
+                <div className="feature-icon"><feature.icon size={20} /></div>
+                <div className="feature-copy">
+                  <h3>{feature.title}</h3>
+                  <p>{feature.description}</p>
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
+        <section className="subscribe-section">
+          <div className="subscribe-copy">
+            <h2>Subscribe to updates</h2>
+            <p>Get early access updates and new feature releases.</p>
+          </div>
+          <form className="subscribe-form" onSubmit={(event) => event.preventDefault()}>
+            <input type="email" placeholder="Enter your email" aria-label="Email" />
+            <button type="submit">Submit</button>
+          </form>
+        </section>
+        <footer className="footer-section">
+          <div className="footer-brand">
+            <BrandWordmark />
+            <p>Your personal AI concierge for intelligent hotels.</p>
+            <div className="social-row" aria-label="Social links">
+              {["X", "in", "ig"].map((label) => <span className="social-icon" key={label}>{label}</span>)}
+            </div>
+          </div>
+          <div className="footer-columns">
+            {footerColumns.map((column) => (
+              <div key={column.title}>
+                <h3>{column.title}</h3>
+                {column.links.map((link) => <span className="footer-link" key={link}>{link}</span>)}
+              </div>
+            ))}
+          </div>
+          <div className="footer-bottom">
+            <div className="footer-line" />
+            <p>2026 ORIN. All rights reserved.</p>
+            <div className="footer-policies">
+              <span>Privacy Policy</span>
+              <span>Terms of service</span>
+            </div>
+          </div>
+        </footer>
+      </div>
+    </main>
+  );
+}
+
+function Onboarding({ name, setName, step, setStep, answers, setAnswers, onComplete, onLogout }: {
+  name: string;
+  setName: (value: string) => void;
+  step: number;
+  setStep: (value: number) => void;
+  answers: Record<string, string>;
+  setAnswers: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  onComplete: () => void;
+  onLogout: () => void;
+}) {
+  const activeQuestion = preferenceSteps[step - 1];
+  const canContinue = step === 0 ? name.trim().length > 0 : activeQuestion ? Boolean(answers[activeQuestion.id]) : true;
+  return (
+    <main className="page-shell">
+      <div className="mobile-frame auth-frame">
+        <div className="minimal-header"><button className="back-button" onClick={step === 0 ? onLogout : () => setStep(step - 1)} type="button" aria-label="Back"><ChevronLeft size={18} /></button></div>
+        {step === 0 ? (
+          <section className="profile-screen profile-screen--details">
+            <span className="screen-kicker screen-kicker--details">ORIN profile</span>
+            <ConsentArt />
+            <div className="profile-copy"><h1>Tell ORIN about you.</h1><p>Set up your ORIN profile so every stay feels personal from the moment you arrive.</p></div>
+            <div className="profile-form-card"><label><span className="auth-label auth-label--soft">Display name</span><input className="auth-input auth-input--details" value={name} onChange={(event) => setName(event.target.value)} placeholder="Shalom" /></label></div>
+            <button className={cn("auth-primary profile-primary", canContinue && "auth-primary--enabled")} disabled={!canContinue} onClick={() => setStep(1)} type="button">Continue</button>
+          </section>
+        ) : step <= preferenceSteps.length ? (
+          <section className="preferences-screen preferences-screen--selection">
+            <div className="preferences-topbar"><span>{step}/{preferenceSteps.length}</span><div className="preferences-progress"><span style={{ width: `${(step / preferenceSteps.length) * 100}%` }} /></div></div>
+            <div className="preferences-copy"><p className="screen-kicker screen-kicker--center screen-kicker--details">Stay memory</p><h1>{activeQuestion.label}</h1></div>
+            <div className="preference-options">
+              {activeQuestion.options.map((option) => {
+                const selected = answers[activeQuestion.id] === option;
+                return <button className={cn("preference-card", selected && "preference-card--active")} key={option} onClick={() => setAnswers((current) => ({ ...current, [activeQuestion.id]: option }))} type="button"><span className="preference-copy-block">{option}</span><span className={cn("preference-radio", selected && "preference-radio--active")}>{selected ? <Check size={12} /> : null}</span></button>;
+              })}
+            </div>
+            <button className={cn("auth-primary preference-next", canContinue && "auth-primary--enabled")} disabled={!canContinue} onClick={() => setStep(step + 1)} type="button">{step === preferenceSteps.length ? "Finish preferences" : "Next"}</button>
+          </section>
+        ) : (
+          <section className="setup-saved-screen">
+            <article className="success-card booking-success-card"><div className="success-icon-shell"><div className="success-icon-core"><Check size={30} /></div></div><div className="success-copy booking-success-copy"><h1>ORIN is ready.</h1><p>Your profile is initialized. Continue to the live dashboard.</p></div></article>
+            <button className="auth-primary auth-primary--enabled verified-primary" onClick={onComplete} type="button">Enter ORIN</button>
+          </section>
+        )}
+      </div>
+    </main>
+  );
+}
+
+function HomeScreen({ guestName, persona, temp, brightness, lighting, music, onChat, onRoom, onBook }: { guestName: string; persona: string; temp: number; brightness: number; lighting: string; music: string; onChat: () => void; onRoom: () => void; onBook: () => void }) {
+  return <section className="app-home app-home--figma"><div className="post-home-greeting app-home-greeting"><div><p>Welcome back,</p><strong>{guestName}</strong><span className="app-home-subtitle">Hotel Bellweather, Suite 1234</span></div><span className="chat-status chat-status--home">ORIN ACTIVE</span></div><article className="home-hero-card"><div className="home-hero-copy"><span className="home-hero-kicker">Long-term memory</span><strong>Everything is tuned to your profile</strong><p>{persona}</p></div><div className="home-hero-orb"><div className="home-hero-orb-core" /></div></article><div className="quick-card-list quick-card-list--home">{[{ label: "Music", value: music, icon: Music }, { label: "Lights", value: `${lighting} / ${brightness}%`, icon: Lightbulb }, { label: "Temperature", value: `${temp}°C`, icon: Thermometer }].map((card) => <article className="quick-card quick-card--home" key={card.label}><div className="quick-card-icon quick-card-icon--home"><card.icon size={18} /></div><div className="quick-card-copy"><span>{card.label}</span><strong>{card.value}</strong></div></article>)}</div><div className="home-actions home-actions--figma"><button className="setup-button setup-button--figma home-primary" onClick={onChat} type="button"><span className="home-cta-inner"><Mic size={18} /><span>Talk to ORIN</span></span></button><button className="auth-secondary auth-secondary--figma" onClick={onRoom} type="button">Room control</button><button className="auth-secondary auth-secondary--figma" onClick={onBook} type="button">Curate stays</button></div></section>;
+}
+
+function ChatScreen({ messages, input, setInput, isBusy, onSend, onRecommend, onBack, messagesEndRef }: { messages: ChatMessage[]; input: string; setInput: (value: string) => void; isBusy: boolean; onSend: () => void; onRecommend: () => void; onBack: () => void; messagesEndRef: React.RefObject<HTMLDivElement | null> }) {
+  const hasBookingContext = messages.some((message) => message.card?.type === "stays" || message.card?.type === "confirmation" || message.card?.type === "payment");
+  const statusLabel = isBusy ? "Listening" : hasBookingContext ? "Booking Active" : "Active";
+
+  return (
+    <section className="booking-chat live-chat-screen">
+      <header className="chat-header">
+        <button className="back-button" onClick={onBack} type="button" aria-label="Back to home">
+          <ChevronLeft size={18} />
+        </button>
+        <div className="chat-header-copy">
+          <strong>ORIN</strong>
+          <span className={cn("chat-status", isBusy && "chat-status--listening", hasBookingContext && !isBusy && "chat-status--booking")}>{statusLabel}</span>
+        </div>
+        <button className="back-button chat-header-action" onClick={onRecommend} type="button">Stays</button>
+      </header>
+
+      <div className="chat-thread">
+        {messages.map((message) => <ChatMessageView key={message.id} message={message} />)}
+        {isBusy ? <article className="orin-message"><small>○ Orin</small><p>Working on that...</p></article> : null}
+        <div ref={messagesEndRef} />
+      </div>
+
+      <div className="chat-composer">
+        <div className="composer-input-shell">
+          <input value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") onSend(); }} placeholder="Tell ORIN..." />
+        </div>
+        <button className="mic-button mic-button--voice" type="button" aria-label="Use microphone"><Mic size={18} /></button>
+        <button className="mic-button mic-button--send" onClick={onSend} disabled={!input.trim()} type="button" aria-label="Send message"><Send size={18} /></button>
+      </div>
+
+      <div className="prompt-strip">
+        <button onClick={onRecommend} type="button">Recommend stays</button>
+        <button onClick={() => setInput("Dim the lights and set temperature to 22 degrees")} type="button">Room mood</button>
+      </div>
+    </section>
+  );
+}
+
+function ChatMessageView({ message }: { message: ChatMessage }) {
+  if (message.card?.type === "stays") return <article className="orin-message orin-card-message"><small>○ Orin</small><StayCards options={message.card.options} onSelect={() => undefined} /></article>;
+  if (message.card?.type === "confirmation") return <article className="orin-message"><small>○ Orin</small><BookingConfirmation option={message.card.option} summary={message.card.summary} onConfirm={() => undefined} passive /></article>;
+  if (message.card?.type === "payment") return <article className="orin-message"><small>○ Orin</small><PaymentSummary summary={message.card.summary} paymentMethod={null} setPaymentMethod={() => undefined} approved={message.card.approved} onFinalize={() => undefined} passive /></article>;
+  return message.role === "user" ? <div className="user-bubble"><p>{message.text}</p></div> : <article className="orin-message"><small>○ Orin</small><p>{renderTextWithLinks(message.text ?? "")}</p></article>;
+}
+
+function BookingScreen({ messages, selectedStay, summary, paymentMethod, setPaymentMethod, approved, onSearch, onSelect, onConfirm, onFinalize }: { messages: ChatMessage[]; selectedStay: CuratedStayOption | null; summary: BookingSummary | null; paymentMethod: PaymentMethod | null; setPaymentMethod: (method: PaymentMethod) => void; approved: boolean; onSearch: () => void; onSelect: (option: CuratedStayOption) => void; onConfirm: () => void; onFinalize: () => void }) {
+  const stayCards = messages.findLast((message) => message.card?.type === "stays")?.card;
+  return <section className="booking-results"><div className="results-copy"><h1>Here are stays that match your style</h1><p>Choose a stay and ORIN will prepare the booking details for you.</p></div><button className="auth-secondary refine-button" onClick={onSearch} type="button">Search curated stays</button>{stayCards?.type === "stays" ? <StayCards options={stayCards.options} onSelect={onSelect} /> : null}{selectedStay && summary ? <BookingConfirmation option={selectedStay} summary={summary} onConfirm={onConfirm} /> : null}{summary ? <PaymentSummary summary={summary} paymentMethod={paymentMethod} setPaymentMethod={setPaymentMethod} approved={approved} onFinalize={onFinalize} /> : null}</section>;
+}
+
+function StayCards({ options, onSelect }: { options: CuratedStayOption[]; onSelect: (option: CuratedStayOption) => void }) {
+  return <div className="results-carousel">{options.slice(0, 3).map((option) => <article className="hotel-card" key={option.hotelId}><img alt={option.hotelName} src={option.image} /><div className="hotel-card-body"><h2>{option.hotelName}</h2><div className="hotel-meta-row"><p><MapPin size={12} /> {option.location}</p><span>{formatCurrency(option.price, option.currency)}</span></div><p className="hotel-reason">Why ORIN picked this: {option.reasonForRecommendation}</p><div className="results-tags">{option.tags.map((tag) => <span key={`${option.hotelId}-${tag}`}>{tag}</span>)}</div><button className="auth-primary auth-primary--enabled hotel-book" onClick={() => onSelect(option)} type="button">Book Now <span className="button-arrow">→</span></button></div></article>)}</div>;
+}
+
+function BookingConfirmation({ option, summary, onConfirm, passive }: { option: CuratedStayOption; summary: BookingSummary; onConfirm: () => void; passive?: boolean }) {
+  return <article className="summary-card"><span>BOOKING SUMMARY</span><p>{option.hotelName} • {summary.checkInDate} - {summary.checkOutDate} • {summary.guests} guests</p>{!passive ? <div className="summary-actions"><button className="summary-confirm" onClick={onConfirm} type="button">Confirm details</button></div> : null}</article>;
+}
+
+function PaymentSummary({ summary, paymentMethod, setPaymentMethod, approved, onFinalize, passive }: { summary: BookingSummary; paymentMethod: PaymentMethod | null; setPaymentMethod: (method: PaymentMethod) => void; approved?: boolean; onFinalize: () => void; passive?: boolean }) {
+  return <article className="payment-summary-card"><h2>PAYMENT SUMMARY</h2>{summary.priceLines.map((line) => <div className="payment-line" key={line.label}><span>{line.label}</span><b>{line.lineType === "discount" ? "-" : ""}{formatCurrency(Math.abs(line.amount), summary.currency)}</b></div>)}<div className="payment-total"><span>Total</span><b>{formatCurrency(summary.payableTotal, summary.currency)}</b></div><div className="setup-panel"><div className="setup-avatar"><Ticket size={18} /></div><div><span>ORIN POINTS</span><p>Redeeming {summary.pointsRedemption.pointsUsed} points for {formatCurrency(summary.pointsRedemption.discountAmount, summary.currency)} off</p></div></div>{!passive ? <><div className="payment-method-grid"><button className={cn("payment-method", paymentMethod === "pusd" && "payment-method--active")} onClick={() => setPaymentMethod("pusd")} type="button">$PUSD</button><button className={cn("payment-method", paymentMethod === "mastercard" && "payment-method--active")} onClick={() => setPaymentMethod("mastercard")} type="button">Mastercard</button></div><button className="auth-primary auth-primary--enabled payment-button" disabled={!paymentMethod || approved} onClick={onFinalize} type="button">{approved ? "Booking approved" : paymentMethod ? "Final approval" : "Select payment method"}</button></> : null}</article>;
+}
+
+function RoomScreen({ temp, setTemp, brightness, setBrightness, lighting, setLighting, music, setMusic, musicOn, setMusicOn, isSaving, onSave }: { temp: number; setTemp: (value: number) => void; brightness: number; setBrightness: (value: number) => void; lighting: LightingMode; setLighting: (value: LightingMode) => void; music: string; setMusic: (value: string) => void; musicOn: boolean; setMusicOn: (value: boolean) => void; isSaving: boolean; onSave: () => void }) {
+  return <section className="room-screen"><header className="room-header"><div className="room-header-copy"><strong>Room Control</strong><span>Live canonical state</span></div><button className="bookmark-button" type="button"><Zap size={18} /></button></header><div className="preset-strip">{[{ label: "Relax", temp: 22, brightness: 35, lighting: "warm" as LightingMode, music: "Jazz" }, { label: "Focus", temp: 21, brightness: 85, lighting: "cold" as LightingMode, music: "Lo-Fi" }, { label: "Sleep", temp: 19, brightness: 10, lighting: "ambient" as LightingMode, music: "Ambient" }].map((preset) => <button className="preset-pill" key={preset.label} onClick={() => { setTemp(preset.temp); setBrightness(preset.brightness); setLighting(preset.lighting); setMusic(preset.music); setMusicOn(true); }} type="button">{preset.label}</button>)}</div><ControlPanel label="TEMPERATURE" value={temp} min={16} max={30} suffix="°C" onChange={setTemp} /><ControlPanel label="LIGHTS" value={brightness} min={0} max={100} suffix="%" onChange={setBrightness} /><article className="music-panel"><div className="music-panel-header"><strong>♫ MUSIC</strong><span>{musicOn ? music : "Off"}</span></div><div className="music-options">{["Jazz", "Lo-Fi", "Ambient", "Classical"].map((option) => <button className={cn("music-option", musicOn && music === option && "music-option--active")} key={option} onClick={() => { setMusic(option); setMusicOn(true); }} type="button">{option}</button>)}<button className={cn("music-option", !musicOn && "music-option--active")} onClick={() => setMusicOn(false)} type="button">Off</button></div></article><button className="auth-primary auth-primary--enabled room-save" onClick={onSave} disabled={isSaving} type="button">{isSaving ? "Syncing..." : "Save My Setup"} <span className="button-arrow">→</span></button></section>;
+}
+
+function ControlPanel({ label, value, min, max, suffix, onChange }: { label: string; value: number; min: number; max: number; suffix: string; onChange: (value: number) => void }) {
+  const percentage = ((value - min) / (max - min)) * 100;
+  return <article className="control-panel"><div className="control-top"><strong>{label}</strong><b>{value}{suffix}</b></div><div className="slider-shell"><div className="slider-track" /><div className="slider-progress" style={{ width: `${percentage}%` }} /><input className="slider-input" max={max} min={min} onChange={(event) => onChange(Number(event.target.value))} type="range" value={value} /></div><div className="control-range"><span>{min}{suffix}</span><span>{max}{suffix}</span></div></article>;
+}
+
+function ProfileScreen({ guestName, walletLabel, profileImage, persona, points, temp, brightness, lighting, music, onAvatarChange }: { guestName: string; walletLabel: string; profileImage: string | null; persona: string; points: number; temp: number; brightness: number; lighting: string; music: string; onAvatarChange: (event: React.ChangeEvent<HTMLInputElement>) => void }) {
+  return <section className="mobile-profile mobile-profile--post-onboarding"><article className="identity-card"><div className="identity-top"><div className="identity-avatar">{profileImage ? <Image src={profileImage} alt="Profile" fill className="object-cover" unoptimized /> : <UserRound />}</div><div className="identity-copy"><strong>{guestName}</strong><span>{walletLabel}</span><p>Member since May 2026</p></div><label className="verified-badge"><Camera size={13} /> Photo<input className="hidden" type="file" accept="image/*" onChange={onAvatarChange} /></label></div><div className="identity-stats"><span>ORIN Points</span><strong className="identity-points">{points} pts</strong></div><div className="identity-meter"><div /></div><div className="identity-foot"><span>{persona}</span></div></article><div className="profile-section"><h2>Saved Preferences</h2><div className="profile-list-card">{[{ label: `Climate ${temp}°C`, icon: Thermometer }, { label: `Lighting ${lighting} / ${brightness}%`, icon: Lightbulb }, { label: `Music ${music}`, icon: Music }].map((item) => <div className="profile-row" key={item.label}><span className="profile-row-icon"><item.icon size={18} /></span><strong>{item.label}</strong></div>)}</div></div><div className="profile-section"><h2>Wallet</h2><div className="profile-wallet-card"><span className="profile-row-icon"><Wallet size={18} /></span><div className="profile-wallet-copy"><strong>Connected Wallet</strong><small>{walletLabel}</small></div><span className="wallet-ok"><Check size={16} /></span></div></div></section>;
+}
