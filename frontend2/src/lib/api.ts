@@ -22,6 +22,7 @@ export interface GuestContext {
   name: string;
   loyaltyPoints: number;
   history: string[];
+  persona?: string;
   currentPreferences?: {
     temp?: number;
     lighting?: string;
@@ -284,6 +285,14 @@ export interface GuestProfileApiResponse {
   preferences?: Array<Record<string, unknown>>;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object";
+}
+
+function isNumericLike(value: unknown): value is number | string {
+  return typeof value === "number" || (typeof value === "string" && value.trim() !== "" && Number.isFinite(Number(value)));
+}
+
 /**
  * GET /api/v1/device/status?guestPda=<YOUR_PDA>
  * Fetches the current live state of the room devices for a specific guest.
@@ -304,6 +313,23 @@ export async function fetchDeviceStatus(guestPda: string): Promise<RoomDeviceSta
 
   if (!normalizedDevice || typeof normalizedDevice !== "object") {
     throw new Error("Device status API returned malformed payload: missing device state.");
+  }
+
+  if (!isRecord(normalizedDevice.nest) || !isNumericLike(normalizedDevice.nest.temp)) {
+    throw new Error("Device status API returned malformed payload: missing nest.temp.");
+  }
+
+  if (!isRecord(normalizedDevice.hue) || !isNumericLike(normalizedDevice.hue.brightness)) {
+    throw new Error("Device status API returned malformed payload: missing hue.brightness.");
+  }
+
+  if (
+    normalizedDevice.lighting !== undefined &&
+    normalizedDevice.lighting !== "warm" &&
+    normalizedDevice.lighting !== "cold" &&
+    normalizedDevice.lighting !== "ambient"
+  ) {
+    throw new Error("Device status API returned malformed payload: invalid lighting.");
   }
 
   return normalizedDevice;

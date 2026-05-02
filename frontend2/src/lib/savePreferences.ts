@@ -138,9 +138,9 @@ export async function saveManualPreferences(
 
   let txSignature: string | undefined = undefined;
 
-  // Manual saves are on-chain synchronization events, so we sign unless
-  // the backend explicitly opts out in a future contract revision.
-  const requiresSignature = apiResponse.requiresSignature ?? true;
+  // Sign only when the backend explicitly asks for a hash-lock update.
+  // This keeps manual controls aligned with the intent-driven signature contract.
+  const requiresSignature = apiResponse.requiresSignature === true;
 
   if (requiresSignature) {
     const { identifierHash } = deriveGuestPda(guestName, ownerPubkey);

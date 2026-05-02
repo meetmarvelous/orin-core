@@ -1,5 +1,8 @@
 "use client";
 
+// Legacy reference component copied from the original frontend.
+// The live frontend2 shell is src/app/page.tsx; do not wire this as an alternate auth/dashboard flow.
+
 import React, { useEffect, useState } from "react";
 import { useWallet, useAnchorWallet } from "@solana/wallet-adapter-react";
 import { Program, AnchorProvider, Idl } from "@coral-xyz/anchor";
