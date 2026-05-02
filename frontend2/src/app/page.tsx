@@ -397,9 +397,16 @@ export default function Frontend2App() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, activeTab]);
 
-  const finishOnboarding = () => {
+  const finishOnboarding = async () => {
     const finalName = onboardingName.trim() || "Guest";
     const initialRoomPrefs = buildRoomPrefsFromAnswers(answers);
+    const onboardingSummary = [
+      answers.vibe ? `stay mood ${answers.vibe.replace(/_/g, " ")}` : null,
+      `room temperature ${initialRoomPrefs.temp} degrees`,
+      `${initialRoomPrefs.lighting} lighting`,
+      `${initialRoomPrefs.brightness}% brightness`,
+      initialRoomPrefs.music ? `${initialRoomPrefs.music} music` : "no music",
+    ].filter(Boolean).join(", ");
     markLocalRoomEdit();
     setTemp(initialRoomPrefs.temp);
     setBrightness(initialRoomPrefs.brightness);
@@ -413,8 +420,23 @@ export default function Frontend2App() {
       localStorage.setItem(`orin_frontend2_answers_${derivedAddress}`, JSON.stringify(answers));
     }
     setMessages([{ id: "welcome", role: "orin", text: `Welcome back, ${finalName}. I'm ORIN, your personal AI concierge. All systems are online.` }]);
-    setActiveTab("home");
+    setActiveTab("booking");
     setView("dashboard");
+    setIsChatBusy(true);
+    const loadingId = appendMessage({ role: "orin", text: "Preparing stays that match your ORIN profile..." });
+    try {
+      const response = await fetchCuratedStays({
+        ...searchDefaults,
+        conversation_summary: `New guest onboarding complete for ${finalName}: ${onboardingSummary}. Recommend 2-3 stays that match this style.`,
+        loyalty_points: loyaltyPoints,
+      } satisfies CuratedSearchRequest);
+      replaceMessage(loadingId, { text: "I found stays that match your style. Choose one and I will prepare the booking details in chat." });
+      appendMessage({ role: "orin", card: { type: "stays", options: [...response.options] } });
+    } catch (error) {
+      replaceMessage(loadingId, { text: `I couldn't fetch curated stays yet: ${getErrorMessage(error)}` });
+    } finally {
+      setIsChatBusy(false);
+    }
   };
 
   const handleLogout = async () => {
@@ -449,14 +471,14 @@ export default function Frontend2App() {
     setBookingApproved(false);
     appendMessage({ role: "orin", text: `Great choice. I prepared a booking summary for ${option.hotelName}.` });
     appendMessage({ role: "orin", card: { type: "confirmation", option, summary } });
-    setActiveTab("booking");
+    setActiveTab("chat");
   };
 
   const showPayment = () => {
     if (!bookingSummary) return;
     appendMessage({ role: "orin", text: "Payment summary is ready. Choose $PUSD or Mastercard for final approval." });
     appendMessage({ role: "orin", card: { type: "payment", summary: bookingSummary } });
-    setActiveTab("booking");
+    setActiveTab("chat");
   };
 
   const finalizeBooking = () => {
@@ -581,7 +603,7 @@ export default function Frontend2App() {
         setStep={setOnboardingStep}
         answers={answers}
         setAnswers={setAnswers}
-        onComplete={finishOnboarding}
+        onComplete={() => void finishOnboarding()}
         onLogout={handleLogout}
       />
     );
@@ -601,8 +623,8 @@ export default function Frontend2App() {
         <AnimatePresence mode="wait">
           <motion.section key={activeTab} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -12 }} className={cn("dashboard-screen", `dashboard-screen--${activeTab}`)}>
             {activeTab === "home" && <HomeScreen guestName={guestName} persona={persona} temp={temp} brightness={brightness} lighting={lighting} music={musicOn ? music : "Off"} onChat={() => setActiveTab("chat")} onRoom={() => setActiveTab("room")} onBook={() => void handleCuratedSearch("Recommend premium hotel stays that fit my ORIN profile.")} />}
-            {activeTab === "chat" && <ChatScreen messages={messages} input={chatInput} setInput={setChatInput} isBusy={isChatBusy} onSend={() => void handleVoiceOrTextCommand(chatInput)} onRecommend={() => void handleCuratedSearch("Recommend curated stays for two nights.")} onBack={() => setActiveTab("home")} messagesEndRef={messagesEndRef} />}
-            {activeTab === "booking" && <BookingScreen messages={messages} selectedStay={selectedStay} summary={bookingSummary} paymentMethod={paymentMethod} setPaymentMethod={setPaymentMethod} approved={bookingApproved} onSearch={() => void handleCuratedSearch("Show me premium hotel options for my next stay.")} onSelect={selectStay} onConfirm={showPayment} onFinalize={finalizeBooking} />}
+            {activeTab === "chat" && <ChatScreen messages={messages} input={chatInput} setInput={setChatInput} isBusy={isChatBusy} onSend={() => void handleVoiceOrTextCommand(chatInput)} onRecommend={() => void handleCuratedSearch("Recommend curated stays for two nights.")} onBack={() => setActiveTab("home")} onSelectStay={selectStay} onConfirm={showPayment} paymentMethod={paymentMethod} setPaymentMethod={setPaymentMethod} approved={bookingApproved} onFinalize={finalizeBooking} messagesEndRef={messagesEndRef} />}
+            {activeTab === "booking" && <BookingScreen messages={messages} isLoading={isChatBusy} selectedStay={selectedStay} summary={bookingSummary} paymentMethod={paymentMethod} setPaymentMethod={setPaymentMethod} approved={bookingApproved} onSearch={() => void handleCuratedSearch("Show me premium hotel options for my next stay.")} onSelect={selectStay} onConfirm={showPayment} onFinalize={finalizeBooking} />}
             {activeTab === "room" && <RoomScreen temp={temp} setTemp={updateTemp} brightness={brightness} setBrightness={updateBrightness} lighting={lighting} setLighting={updateLighting} music={music} setMusic={updateMusic} musicOn={musicOn} setMusicOn={updateMusicOn} isSaving={isSavingRoom} onSave={() => void saveRoom()} />}
             {activeTab === "profile" && <ProfileScreen guestName={guestName} walletLabel={walletLabel} profileImage={profileImage} persona={persona} points={loyaltyPoints} temp={temp} brightness={brightness} lighting={lighting} music={musicOn ? music : "Off"} onAvatarChange={handleAvatarChange} />}
           </motion.section>
@@ -814,7 +836,7 @@ function HomeScreen({ guestName, persona, temp, brightness, lighting, music, onC
   return <section className="app-home app-home--figma"><div className="post-home-greeting app-home-greeting"><div><p>Welcome back,</p><strong>{guestName}</strong><span className="app-home-subtitle">Hotel Bellweather, Suite 1234</span></div><span className="chat-status chat-status--home">ORIN ACTIVE</span></div><article className="home-hero-card"><div className="home-hero-copy"><span className="home-hero-kicker">Long-term memory</span><strong>Everything is tuned to your profile</strong><p>{persona}</p></div><div className="home-hero-orb"><div className="home-hero-orb-core" /></div></article><div className="quick-card-list quick-card-list--home">{[{ label: "Music", value: music, icon: Music }, { label: "Lights", value: `${lighting} / ${brightness}%`, icon: Lightbulb }, { label: "Temperature", value: `${temp}°C`, icon: Thermometer }].map((card) => <article className="quick-card quick-card--home" key={card.label}><div className="quick-card-icon quick-card-icon--home"><card.icon size={18} /></div><div className="quick-card-copy"><span>{card.label}</span><strong>{card.value}</strong></div></article>)}</div><div className="home-actions home-actions--figma"><button className="setup-button setup-button--figma home-primary" onClick={onChat} type="button"><span className="home-cta-inner"><Mic size={18} /><span>Talk to ORIN</span></span></button><button className="auth-secondary auth-secondary--figma" onClick={onRoom} type="button">Room control</button><button className="auth-secondary auth-secondary--figma" onClick={onBook} type="button">Curate stays</button></div></section>;
 }
 
-function ChatScreen({ messages, input, setInput, isBusy, onSend, onRecommend, onBack, messagesEndRef }: { messages: ChatMessage[]; input: string; setInput: (value: string) => void; isBusy: boolean; onSend: () => void; onRecommend: () => void; onBack: () => void; messagesEndRef: React.RefObject<HTMLDivElement | null> }) {
+function ChatScreen({ messages, input, setInput, isBusy, onSend, onRecommend, onBack, onSelectStay, onConfirm, paymentMethod, setPaymentMethod, approved, onFinalize, messagesEndRef }: { messages: ChatMessage[]; input: string; setInput: (value: string) => void; isBusy: boolean; onSend: () => void; onRecommend: () => void; onBack: () => void; onSelectStay: (option: CuratedStayOption) => void; onConfirm: () => void; paymentMethod: PaymentMethod | null; setPaymentMethod: (method: PaymentMethod) => void; approved: boolean; onFinalize: () => void; messagesEndRef: React.RefObject<HTMLDivElement | null> }) {
   const hasBookingContext = messages.some((message) => message.card?.type === "stays" || message.card?.type === "confirmation" || message.card?.type === "payment");
   const statusLabel = isBusy ? "Listening" : hasBookingContext ? "Booking Active" : "Active";
 
@@ -832,7 +854,7 @@ function ChatScreen({ messages, input, setInput, isBusy, onSend, onRecommend, on
       </header>
 
       <div className="chat-thread">
-        {messages.map((message) => <ChatMessageView key={message.id} message={message} />)}
+        {messages.map((message) => <ChatMessageView key={message.id} message={message} onSelectStay={onSelectStay} onConfirm={onConfirm} paymentMethod={paymentMethod} setPaymentMethod={setPaymentMethod} approved={approved} onFinalize={onFinalize} />)}
         {isBusy ? <article className="orin-message"><small>○ Orin</small><p>Working on that...</p></article> : null}
         <div ref={messagesEndRef} />
       </div>
@@ -853,16 +875,16 @@ function ChatScreen({ messages, input, setInput, isBusy, onSend, onRecommend, on
   );
 }
 
-function ChatMessageView({ message }: { message: ChatMessage }) {
-  if (message.card?.type === "stays") return <article className="orin-message orin-card-message"><small>○ Orin</small><StayCards options={message.card.options} onSelect={() => undefined} /></article>;
-  if (message.card?.type === "confirmation") return <article className="orin-message"><small>○ Orin</small><BookingConfirmation option={message.card.option} summary={message.card.summary} onConfirm={() => undefined} passive /></article>;
-  if (message.card?.type === "payment") return <article className="orin-message"><small>○ Orin</small><PaymentSummary summary={message.card.summary} paymentMethod={null} setPaymentMethod={() => undefined} approved={message.card.approved} onFinalize={() => undefined} passive /></article>;
+function ChatMessageView({ message, onSelectStay, onConfirm, paymentMethod, setPaymentMethod, approved, onFinalize }: { message: ChatMessage; onSelectStay: (option: CuratedStayOption) => void; onConfirm: () => void; paymentMethod: PaymentMethod | null; setPaymentMethod: (method: PaymentMethod) => void; approved: boolean; onFinalize: () => void }) {
+  if (message.card?.type === "stays") return <article className="orin-message orin-card-message"><small>○ Orin</small><StayCards options={message.card.options} onSelect={onSelectStay} /></article>;
+  if (message.card?.type === "confirmation") return <article className="orin-message orin-flow-message"><small>○ Orin</small><BookingConfirmation option={message.card.option} summary={message.card.summary} onConfirm={onConfirm} /></article>;
+  if (message.card?.type === "payment") return <article className="orin-message orin-flow-message"><small>○ Orin</small><PaymentSummary summary={message.card.summary} paymentMethod={paymentMethod} setPaymentMethod={setPaymentMethod} approved={message.card.approved || approved} onFinalize={onFinalize} /></article>;
   return message.role === "user" ? <div className="user-bubble"><p>{message.text}</p></div> : <article className="orin-message"><small>○ Orin</small><p>{renderTextWithLinks(message.text ?? "")}</p></article>;
 }
 
-function BookingScreen({ messages, selectedStay, summary, paymentMethod, setPaymentMethod, approved, onSearch, onSelect, onConfirm, onFinalize }: { messages: ChatMessage[]; selectedStay: CuratedStayOption | null; summary: BookingSummary | null; paymentMethod: PaymentMethod | null; setPaymentMethod: (method: PaymentMethod) => void; approved: boolean; onSearch: () => void; onSelect: (option: CuratedStayOption) => void; onConfirm: () => void; onFinalize: () => void }) {
+function BookingScreen({ messages, isLoading, selectedStay, summary, paymentMethod, setPaymentMethod, approved, onSearch, onSelect, onConfirm, onFinalize }: { messages: ChatMessage[]; isLoading: boolean; selectedStay: CuratedStayOption | null; summary: BookingSummary | null; paymentMethod: PaymentMethod | null; setPaymentMethod: (method: PaymentMethod) => void; approved: boolean; onSearch: () => void; onSelect: (option: CuratedStayOption) => void; onConfirm: () => void; onFinalize: () => void }) {
   const stayCards = messages.findLast((message) => message.card?.type === "stays")?.card;
-  return <section className="booking-results"><div className="results-copy"><h1>Here are stays that match your style</h1><p>Choose a stay and ORIN will prepare the booking details for you.</p></div><button className="auth-secondary refine-button" onClick={onSearch} type="button">Search curated stays</button>{stayCards?.type === "stays" ? <StayCards options={stayCards.options} onSelect={onSelect} /> : null}{selectedStay && summary ? <BookingConfirmation option={selectedStay} summary={summary} onConfirm={onConfirm} /> : null}{summary ? <PaymentSummary summary={summary} paymentMethod={paymentMethod} setPaymentMethod={setPaymentMethod} approved={approved} onFinalize={onFinalize} /> : null}</section>;
+  return <section className="booking-results"><div className="results-copy"><h1>Here are stays that match your style</h1><p>Choose a stay and ORIN will prepare the booking details for you in chat.</p></div><button className="auth-secondary refine-button" onClick={onSearch} disabled={isLoading} type="button">{isLoading ? "Curating stays..." : "Search curated stays"}</button>{isLoading && !stayCards ? <article className="curated-loading-card"><div className="spinner" /><strong>ORIN is matching stays to your profile.</strong><span>This usually takes a moment.</span></article> : null}{stayCards?.type === "stays" ? <StayCards options={stayCards.options} onSelect={onSelect} /> : null}{selectedStay && summary ? <BookingConfirmation option={selectedStay} summary={summary} onConfirm={onConfirm} passive /> : null}</section>;
 }
 
 function StayCards({ options, onSelect }: { options: CuratedStayOption[]; onSelect: (option: CuratedStayOption) => void }) {
