@@ -5,6 +5,9 @@
 
 "use client";
 
+// Legacy reference component copied from the original frontend.
+// The live frontend2 room-control flow is implemented in src/app/page.tsx.
+
 import React, { useState, useCallback } from "react";
 import { useWallet, useAnchorWallet } from "@solana/wallet-adapter-react";
 import { Program, AnchorProvider, Idl } from "@coral-xyz/anchor";

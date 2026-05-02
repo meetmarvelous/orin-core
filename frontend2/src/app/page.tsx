@@ -142,8 +142,22 @@ function renderTextWithLinks(text: string) {
   });
 }
 
-function playAudio(audioBase64: string, mimeType: string) {
+function playAudio(
+  audioBase64: string,
+  mimeType: string,
+  activeAudioRef?: React.MutableRefObject<HTMLAudioElement | null>
+) {
+  if (activeAudioRef?.current) {
+    activeAudioRef.current.pause();
+    activeAudioRef.current.currentTime = 0;
+  }
   const audio = new Audio(`data:${mimeType};base64,${audioBase64}`);
+  if (activeAudioRef) {
+    activeAudioRef.current = audio;
+    audio.onended = () => {
+      if (activeAudioRef.current === audio) activeAudioRef.current = null;
+    };
+  }
   return audio.play().catch(() => undefined);
 }
 
@@ -194,6 +208,7 @@ export default function Frontend2App() {
   const [bookingApproved, setBookingApproved] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastLocalRoomEditAt = useRef(0);
+  const activeAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const derivedAddress = useMemo(() => {
     if (walletAdapter.publicKey) return walletAdapter.publicKey.toBase58();
@@ -505,10 +520,10 @@ export default function Frontend2App() {
       const history = messages.slice(-6).map((message) => message.text ?? "");
       const fast = await fetchFastVoiceReply({
         userInput: input,
-        guestContext: { name: guestName, loyaltyPoints, history, currentPreferences: { temp, lighting, brightness, musicOn } },
+        guestContext: { name: guestName, loyaltyPoints, history, persona, currentPreferences: { temp, lighting, brightness, musicOn } },
       });
       if (fast.text) replaceMessage(responseId, { text: fast.text });
-      if (fast.audioBase64) void playAudio(fast.audioBase64, fast.mimeType);
+      if (fast.audioBase64) void playAudio(fast.audioBase64, fast.mimeType, activeAudioRef);
 
       if (!guestPda || !effectivePublicKey || !signerWallet) {
         appendMessage({ role: "orin", text: "Wallet signer is not ready yet, so I handled the conversation but skipped blockchain state changes." });
@@ -523,7 +538,7 @@ export default function Frontend2App() {
         effectivePublicKey,
         input,
         roomPrefs,
-        { name: guestName, loyaltyPoints, history, currentPreferences: roomPrefs },
+        { name: guestName, loyaltyPoints, history, persona, currentPreferences: roomPrefs },
         guestName,
         (text) => replaceMessage(responseId, { text })
       );
@@ -539,7 +554,7 @@ export default function Frontend2App() {
         }
         if (result.aiResult.raw_response) {
           fetchTtsAudio(result.aiResult.raw_response)
-            .then((tts) => playAudio(tts.audioBase64, tts.mimeType))
+            .then((tts) => playAudio(tts.audioBase64, tts.mimeType, activeAudioRef))
             .catch(() => undefined);
         }
       }
@@ -554,7 +569,7 @@ export default function Frontend2App() {
       setIsChatBusy(false);
       setChatInput("");
     }
-  }, [appendMessage, brightness, effectivePublicKey, guestName, guestPda, handleCuratedSearch, lighting, loyaltyPoints, messages, musicOn, refreshGroundTruth, replaceMessage, roomPrefs, signerWallet, temp]);
+  }, [appendMessage, brightness, effectivePublicKey, guestName, guestPda, handleCuratedSearch, lighting, loyaltyPoints, messages, musicOn, persona, refreshGroundTruth, replaceMessage, roomPrefs, signerWallet, temp]);
 
   const saveRoom = async () => {
     if (!guestPda || !effectivePublicKey || !signerWallet) {
@@ -567,10 +582,13 @@ export default function Frontend2App() {
       const provider = getProvider(signerWallet);
       const program = getProgram(provider, idl as Idl);
       const result = await saveManualPreferences(program, guestPda, effectivePublicKey, roomPrefs, guestName);
-      const signature = result.solanaTxSignature
-        ? ` TX Signature: [${result.solanaTxSignature.slice(0, 12)}...](https://explorer.solana.com/tx/${result.solanaTxSignature}?cluster=devnet)`
-        : "";
-      appendMessage({ role: "orin", text: `Environment preferences synchronized. Transaction was subsidized by ORIN Relay (Gasless).${signature}` });
+      if (derivedAddress) {
+        localStorage.setItem(`orin_frontend2_room_${derivedAddress}`, JSON.stringify(roomPrefs));
+      }
+      const message = result.solanaTxSignature
+        ? `Environment preferences synchronized. Transaction was subsidized by ORIN Relay (Gasless). TX Signature: [${result.solanaTxSignature.slice(0, 12)}...](https://explorer.solana.com/tx/${result.solanaTxSignature}?cluster=devnet)`
+        : "Environment preferences synchronized.";
+      appendMessage({ role: "orin", text: message });
       setActiveTab("chat");
       window.setTimeout(() => void refreshGroundTruth(), 3500);
     } catch (error) {
@@ -681,7 +699,7 @@ function Landing({ ready, onLogin }: { ready: boolean; onLogin: () => void }) {
 
   const footerColumns = [
     { title: "PRODUCTS", links: ["Features", "How it works", "Rewards"] },
-    { title: "COMPANY", links: ["About", "Contacts"] },
+    { title: "COMPANY", links: ["About", "Contact us"] },
     { title: "RESOURCES", links: ["Help center", "Privacy"] },
   ];
 
@@ -750,14 +768,24 @@ function Landing({ ready, onLogin }: { ready: boolean; onLogin: () => void }) {
             <BrandWordmark />
             <p>Your personal AI concierge for intelligent hotels.</p>
             <div className="social-row" aria-label="Social links">
-              {["X", "in", "ig"].map((label) => <span className="social-icon" key={label}>{label}</span>)}
+              <a className="social-icon" href="https://x.com/orinhq?s=21" target="_blank" rel="noreferrer" aria-label="ORIN on X">
+                <XIcon />
+              </a>
+              <a className="social-icon" href="https://www.linkedin.com/company/orinhq/" target="_blank" rel="noreferrer" aria-label="ORIN on LinkedIn">
+                <LinkedInIcon />
+              </a>
+              <span className="social-icon social-icon--disabled" aria-label="ORIN Instagram coming soon">
+                <InstagramIcon />
+              </span>
             </div>
           </div>
           <div className="footer-columns">
             {footerColumns.map((column) => (
               <div key={column.title}>
                 <h3>{column.title}</h3>
-                {column.links.map((link) => <span className="footer-link" key={link}>{link}</span>)}
+                {column.links.map((link) => link === "Contact us"
+                  ? <a className="footer-link" href="mailto:hello@OrinHQ.xyz" key={link}>hello@OrinHQ.xyz</a>
+                  : <span className="footer-link" key={link}>{link}</span>)}
               </div>
             ))}
           </div>
@@ -772,6 +800,32 @@ function Landing({ ready, onLogin }: { ready: boolean; onLogin: () => void }) {
         </footer>
       </div>
     </main>
+  );
+}
+
+function XIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4 4L20 20M20 4L4 20" />
+    </svg>
+  );
+}
+
+function LinkedInIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M7.2 10.2V18M7.2 6.4V6.3M11 18V10.2M11 13.8C11 11.8 12.2 10 14.4 10C16.6 10 17.6 11.5 17.6 14.1V18" />
+    </svg>
+  );
+}
+
+function InstagramIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="5" y="5" width="14" height="14" rx="4" />
+      <circle cx="12" cy="12" r="3.2" />
+      <path d="M16.6 7.7H16.7" />
+    </svg>
   );
 }
 
