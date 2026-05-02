@@ -265,6 +265,29 @@
   color: var(--accent);
 }
 
+.preference-copy-block {
+  display: grid;
+  gap: 4px;
+  text-align: left;
+}
+
+.preference-copy-block strong {
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.25;
+}
+
+.preference-copy-block em {
+  color: var(--text-muted);
+  font-size: 12px;
+  font-style: normal;
+  line-height: 1.35;
+}
+
+.preferences-summary-card {
+  width: 100%;
+}
+
 .chat-link {
   color: var(--accent);
   font-weight: 700;

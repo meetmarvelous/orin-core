@@ -34,6 +34,8 @@ type AppView = "landing" | "onboarding" | "dashboard";
 type Tab = "home" | "chat" | "booking" | "room" | "profile";
 type PaymentMethod = "pusd" | "mastercard";
 type LightingMode = "warm" | "cold" | "ambient";
+type PreferenceOption = { label: string; value: string; description: string };
+type PreferenceStep = { id: string; kicker: string; label: string; options: readonly PreferenceOption[] };
 type ChatCard =
   | { type: "stays"; options: CuratedStayOption[] }
   | { type: "confirmation"; option: CuratedStayOption; summary: BookingSummary }
@@ -56,10 +58,57 @@ const searchDefaults: CuratedSearchRequest = {
 };
 
 const preferenceSteps = [
-  { id: "vibe", label: "Stay mood", options: ["Calm luxury", "Business focus", "Nightlife ready"] },
-  { id: "arrival", label: "Arrival setup", options: ["Warm lights", "Cool and quiet", "Bright workspace"] },
-  { id: "sound", label: "Default sound", options: ["Morning jazz", "Ambient calm", "No music"] },
-] as const;
+  {
+    id: "vibe",
+    kicker: "Stay memory",
+    label: "What kind of stay should ORIN prepare for you?",
+    options: [
+      { label: "Calm luxury", value: "calm_luxury", description: "Quiet rooms, soft lighting, slower pacing." },
+      { label: "Business focus", value: "business_focus", description: "Bright workspace, cooler air, minimal distractions." },
+      { label: "Nightlife ready", value: "nightlife_ready", description: "Warmer energy with upbeat room defaults." },
+    ],
+  },
+  {
+    id: "temperature",
+    kicker: "Room climate",
+    label: "Preferred room temperature?",
+    options: [
+      { label: "Cool", value: "19", description: "Set default room temperature to 19°C." },
+      { label: "Balanced", value: "22", description: "Set default room temperature to 22°C." },
+      { label: "Warm", value: "24", description: "Set default room temperature to 24°C." },
+    ],
+  },
+  {
+    id: "lighting",
+    kicker: "Lighting mood",
+    label: "How should the lights feel?",
+    options: [
+      { label: "Warm", value: "warm", description: "Golden hotel lighting for relaxed evenings." },
+      { label: "Cold", value: "cold", description: "Clean bright lighting for work and focus." },
+      { label: "Ambient", value: "ambient", description: "Soft mood lighting for winding down." },
+    ],
+  },
+  {
+    id: "brightness",
+    kicker: "Light level",
+    label: "Default brightness?",
+    options: [
+      { label: "Dim", value: "35", description: "Low brightness for a softer arrival." },
+      { label: "Balanced", value: "65", description: "Comfortable brightness for most stays." },
+      { label: "Bright", value: "85", description: "High brightness for work and clarity." },
+    ],
+  },
+  {
+    id: "sound",
+    kicker: "Sound profile",
+    label: "Default room sound?",
+    options: [
+      { label: "Morning jazz", value: "Jazz", description: "Start with a warm jazz profile." },
+      { label: "Ambient calm", value: "Ambient", description: "Keep the room quiet and atmospheric." },
+      { label: "No music", value: "", description: "Arrive to silence by default." },
+    ],
+  },
+] satisfies readonly PreferenceStep[];
 
 const newId = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 const getErrorMessage = (error: unknown) => error instanceof Error ? error.message : String(error);
@@ -96,6 +145,20 @@ function renderTextWithLinks(text: string) {
 function playAudio(audioBase64: string, mimeType: string) {
   const audio = new Audio(`data:${mimeType};base64,${audioBase64}`);
   return audio.play().catch(() => undefined);
+}
+
+function normalizeLighting(value: string | undefined): LightingMode {
+  return value === "cold" || value === "ambient" ? value : "warm";
+}
+
+function buildRoomPrefsFromAnswers(answers: Record<string, string>): RoomPreferences {
+  const sound = answers.sound ?? "Jazz";
+  return {
+    temp: Number(answers.temperature ?? 22),
+    lighting: normalizeLighting(answers.lighting),
+    brightness: Number(answers.brightness ?? 65),
+    music: sound,
+  };
 }
 
 export default function Frontend2App() {
@@ -270,6 +333,21 @@ export default function Frontend2App() {
     }
     const storedName = derivedAddress ? localStorage.getItem(`orin_frontend2_name_${derivedAddress}`) : null;
     if (storedName) {
+      const storedPrefs = localStorage.getItem(`orin_frontend2_room_${derivedAddress}`);
+      if (storedPrefs) {
+        try {
+          const parsed = JSON.parse(storedPrefs) as Partial<RoomPreferences>;
+          if (typeof parsed.temp === "number") setTemp(parsed.temp);
+          if (typeof parsed.brightness === "number") setBrightness(parsed.brightness);
+          if (parsed.lighting) setLighting(normalizeLighting(parsed.lighting));
+          if (typeof parsed.music === "string") {
+            setMusic(parsed.music || "Jazz");
+            setMusicOn(Boolean(parsed.music));
+          }
+        } catch {
+          localStorage.removeItem(`orin_frontend2_room_${derivedAddress}`);
+        }
+      }
       setGuestName(storedName);
       setView("dashboard");
     } else {
@@ -321,8 +399,19 @@ export default function Frontend2App() {
 
   const finishOnboarding = () => {
     const finalName = onboardingName.trim() || "Guest";
+    const initialRoomPrefs = buildRoomPrefsFromAnswers(answers);
+    markLocalRoomEdit();
+    setTemp(initialRoomPrefs.temp);
+    setBrightness(initialRoomPrefs.brightness);
+    setLighting(initialRoomPrefs.lighting);
+    setMusic(initialRoomPrefs.music || "Jazz");
+    setMusicOn(Boolean(initialRoomPrefs.music));
     setGuestName(finalName);
-    if (derivedAddress) localStorage.setItem(`orin_frontend2_name_${derivedAddress}`, finalName);
+    if (derivedAddress) {
+      localStorage.setItem(`orin_frontend2_name_${derivedAddress}`, finalName);
+      localStorage.setItem(`orin_frontend2_room_${derivedAddress}`, JSON.stringify(initialRoomPrefs));
+      localStorage.setItem(`orin_frontend2_answers_${derivedAddress}`, JSON.stringify(answers));
+    }
     setMessages([{ id: "welcome", role: "orin", text: `Welcome back, ${finalName}. I'm ORIN, your personal AI concierge. All systems are online.` }]);
     setActiveTab("home");
     setView("dashboard");
@@ -676,6 +765,7 @@ function Onboarding({ name, setName, step, setStep, answers, setAnswers, onCompl
 }) {
   const activeQuestion = preferenceSteps[step - 1];
   const canContinue = step === 0 ? name.trim().length > 0 : activeQuestion ? Boolean(answers[activeQuestion.id]) : true;
+  const initialRoomPrefs = buildRoomPrefsFromAnswers(answers);
   return (
     <main className="page-shell">
       <div className="mobile-frame auth-frame">
@@ -691,18 +781,27 @@ function Onboarding({ name, setName, step, setStep, answers, setAnswers, onCompl
         ) : step <= preferenceSteps.length ? (
           <section className="preferences-screen preferences-screen--selection">
             <div className="preferences-topbar"><span>{step}/{preferenceSteps.length}</span><div className="preferences-progress"><span style={{ width: `${(step / preferenceSteps.length) * 100}%` }} /></div></div>
-            <div className="preferences-copy"><p className="screen-kicker screen-kicker--center screen-kicker--details">Stay memory</p><h1>{activeQuestion.label}</h1></div>
+            <div className="preferences-copy"><p className="screen-kicker screen-kicker--center screen-kicker--details">{activeQuestion.kicker}</p><h1>{activeQuestion.label}</h1></div>
             <div className="preference-options">
               {activeQuestion.options.map((option) => {
-                const selected = answers[activeQuestion.id] === option;
-                return <button className={cn("preference-card", selected && "preference-card--active")} key={option} onClick={() => setAnswers((current) => ({ ...current, [activeQuestion.id]: option }))} type="button"><span className="preference-copy-block">{option}</span><span className={cn("preference-radio", selected && "preference-radio--active")}>{selected ? <Check size={12} /> : null}</span></button>;
+                const selected = answers[activeQuestion.id] === option.value;
+                return <button className={cn("preference-card", selected && "preference-card--active")} key={option.value} onClick={() => setAnswers((current) => ({ ...current, [activeQuestion.id]: option.value }))} type="button"><span className="preference-copy-block"><strong>{option.label}</strong><em>{option.description}</em></span><span className={cn("preference-radio", selected && "preference-radio--active")}>{selected ? <Check size={12} /> : null}</span></button>;
               })}
             </div>
             <button className={cn("auth-primary preference-next", canContinue && "auth-primary--enabled")} disabled={!canContinue} onClick={() => setStep(step + 1)} type="button">{step === preferenceSteps.length ? "Finish preferences" : "Next"}</button>
           </section>
         ) : (
           <section className="setup-saved-screen">
-            <article className="success-card booking-success-card"><div className="success-icon-shell"><div className="success-icon-core"><Check size={30} /></div></div><div className="success-copy booking-success-copy"><h1>ORIN is ready.</h1><p>Your profile is initialized. Continue to the live dashboard.</p></div></article>
+            <article className="success-card booking-success-card"><div className="success-icon-shell"><div className="success-icon-core"><Check size={30} /></div></div><div className="success-copy booking-success-copy"><h1>ORIN is ready.</h1><p>Your profile and room defaults are initialized.</p></div></article>
+            <article className="preferences-summary-card">
+              <strong>Room defaults</strong>
+              <div className="preferences-summary-list">
+                <div className="preferences-summary-row"><span>Temperature</span><b>{initialRoomPrefs.temp}°C</b></div>
+                <div className="preferences-summary-row"><span>Lighting</span><b>{initialRoomPrefs.lighting}</b></div>
+                <div className="preferences-summary-row"><span>Brightness</span><b>{initialRoomPrefs.brightness}%</b></div>
+                <div className="preferences-summary-row"><span>Music</span><b>{initialRoomPrefs.music || "Off"}</b></div>
+              </div>
+            </article>
             <button className="auth-primary auth-primary--enabled verified-primary" onClick={onComplete} type="button">Enter ORIN</button>
           </section>
         )}
