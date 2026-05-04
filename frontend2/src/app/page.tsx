@@ -694,7 +694,7 @@ function Landing({ ready, onLogin }: { ready: boolean; onLogin: () => void }) {
           <div className="eyebrow-pill">AI-powered stays, personalized for you</div>
           <h1>Your Personal AI Concierge</h1>
           <p className="hero-copy hero-copy--entry">Every hotel already knows you.</p>
-          <div className="hero-visual"><img src="https://www.figma.com/api/mcp/asset/cc40d28a-5042-49af-95bd-b2ff6fa11fdc" alt="ORIN app preview" /></div>
+          <div className="hero-visual"><img src="/images/hero-phone.png" alt="ORIN app preview" /></div>
           <div className="cta-stack cta-stack--entry">
             <button className="primary-button primary-button--entry" onClick={onLogin} disabled={!ready} type="button">{ready ? "Sign In to ORIN" : "Loading Privy..."}</button>
             <p className="landing-auth-note">Continue with wallet, email, or X.</p>
