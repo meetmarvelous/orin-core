@@ -668,26 +668,6 @@ export default function Frontend2App() {
 }
 
 function Landing({ ready, onLogin }: { ready: boolean; onLogin: () => void }) {
-  const testimonials = [
-    {
-      quote: "THE MOMENT I ENTERED, I KNEW THIS PLACE UNDERSTOOD MY VIBE. THE MUSIC FLOWED LIKE A GREAT CONVERSATION.",
-      name: "JAMES SMITH",
-      role: "CREATIVE DIRECTOR, INNOVATE CO.",
-      avatar: "https://www.figma.com/api/mcp/asset/fa12c099-1d0e-42d9-8f98-6c0a7c77f1c8",
-    },
-    {
-      quote: "EVERY DETAIL HERE SPEAKS TO ME. IT'S AS IF THE SPACE WAS DESIGNED AROUND MY TASTES.",
-      name: "EMILY JOHNSON",
-      role: "CO-FOUNDER, ARTISAN STUDIOS",
-      avatar: "https://www.figma.com/api/mcp/asset/4b82b9a4-c4cc-4ec0-beb7-6dfc030e67d6",
-    },
-    {
-      quote: "IT'S LIKE THE ROOM REMEMBERED ME. THE MORNING PLAYLIST WAS EXACTLY WHAT I LISTENED TO AT HOME.",
-      name: "SOPHIA LEE",
-      role: "PRODUCT LEAD, FRAMEWORK",
-      avatar: "https://www.figma.com/api/mcp/asset/0cbd5339-a085-4fba-bc4d-0ef36e171c68",
-    },
-  ];
 
   const features = [
     { title: "AI Concierge", description: "Talk and type naturally while ORIN understands the full stay context.", icon: Mic },
@@ -720,25 +700,7 @@ function Landing({ ready, onLogin }: { ready: boolean; onLogin: () => void }) {
             <p className="landing-auth-note">Continue with wallet, email, or X.</p>
           </div>
         </section>
-        <div className="soft-divider" />
-        <section className="testimonial-section">
-          <h2>Feels like the room already knows me</h2>
-          <div className="testimonial-list">
-            {testimonials.map((item) => (
-              <article className="testimonial-card" key={item.name}>
-                <p className="testimonial-quote">"{item.quote}"</p>
-                <div className="testimonial-rule" />
-                <div className="testimonial-user">
-                  <img src={item.avatar} alt={item.name} />
-                  <div>
-                    <strong>{item.name}</strong>
-                    <span>{item.role}</span>
-                  </div>
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
+
         <section className="feature-section">
           <h2>How ORIN makes every stay feel like yours</h2>
           <div className="feature-list">
