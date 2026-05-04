@@ -454,7 +454,6 @@ body {
   padding-bottom: clamp(48px, 7vw, 92px);
 }
 
-.landing-frame .testimonial-section,
 .landing-frame .subscribe-section,
 .landing-frame .footer-section {
   max-width: var(--orin-page-max);
@@ -462,18 +461,6 @@ body {
   margin-right: auto;
 }
 
-.landing-frame .testimonial-section {
-  border-radius: clamp(24px, 4vw, 48px);
-  margin-top: 8px;
-  margin-bottom: clamp(36px, 6vw, 80px);
-  padding-top: clamp(28px, 5vw, 58px);
-  padding-bottom: clamp(28px, 5vw, 58px);
-  background:
-    linear-gradient(135deg, rgba(243, 238, 228, 0.96), rgba(255, 255, 255, 0.82)),
-    var(--surface-soft);
-}
-
-.landing-frame .testimonial-section h2,
 .landing-frame .feature-section h2,
 .landing-frame .subscribe-copy h2 {
   font-family: var(--font-display), serif;
@@ -481,18 +468,6 @@ body {
   font-size: clamp(28px, 4.8vw, 58px);
   line-height: 1.02;
   letter-spacing: 0.015em;
-}
-
-.landing-frame .testimonial-list {
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: clamp(14px, 2vw, 24px);
-}
-
-.landing-frame .testimonial-card {
-  min-height: 260px;
-  border: 1px solid rgba(215, 209, 198, 0.72);
-  border-radius: 28px;
-  box-shadow: 0 24px 60px rgba(54, 46, 34, 0.1);
 }
 
 .landing-frame .feature-list {
@@ -526,7 +501,7 @@ body {
   gap: clamp(18px, 4vw, 48px);
   align-items: center;
   border-radius: clamp(26px, 4vw, 44px);
-  background: #1f1f1f;
+  background: #c4a97a;
   color: #fff;
   padding-top: clamp(28px, 5vw, 56px);
   padding-bottom: clamp(28px, 5vw, 56px);
@@ -1049,13 +1024,11 @@ body {
     margin-top: 34px;
   }
 
-  .landing-frame .testimonial-section,
   .landing-frame .subscribe-section,
   .landing-frame .footer-section {
     border-radius: 0;
   }
 
-  .landing-frame .testimonial-list,
   .landing-frame .feature-list,
   .landing-frame .subscribe-section {
     grid-template-columns: 1fr;
@@ -1790,5 +1763,605 @@ body {
 
   .dashboard-screen--booking .refine-button {
     width: calc(100% - 36px);
+  }
+}
+
+/* Figma landing restoration: scoped so dashboard/chat behavior is untouched. */
+.landing-frame {
+  min-height: 100dvh;
+  background:
+    radial-gradient(circle at 49% 0%, rgba(255, 255, 255, 0.98), rgba(247, 247, 247, 0.92) 38%, rgba(236, 232, 224, 0.98)),
+    linear-gradient(180deg, #f7f7f7 0%, #f1ede6 100%);
+  color: #1a1a1a;
+}
+
+.landing-frame .top-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  width: min(100%, 1260px);
+  height: 64px;
+  margin: 0 auto;
+  padding: 0 clamp(16px, 3.2vw, 42px);
+  background: rgba(245, 245, 245, 0.74);
+  border-bottom: 1px solid rgba(215, 209, 198, 0.7);
+  backdrop-filter: blur(18px);
+}
+
+.landing-frame .menu-button {
+  width: 44px;
+  height: 44px;
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(215, 209, 198, 0.48);
+  box-shadow: 0 14px 34px rgba(54, 46, 34, 0.08);
+}
+
+.landing-frame .hero-section--auth-entry {
+  width: min(100%, 1260px);
+  margin: 0 auto;
+  padding: clamp(30px, 5.6vw, 88px) clamp(18px, 5vw, 72px) clamp(42px, 7vw, 102px);
+}
+
+.landing-frame .eyebrow-pill {
+  min-height: 28px;
+  width: fit-content;
+  padding: 7px 17px;
+  border: 1px solid #c4a97a;
+  background: #f3eee4;
+  border-radius: 999px;
+  color: #3f3524;
+  font-size: 10px;
+  line-height: 1;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.landing-frame .hero-section h1 {
+  margin: 18px 0 10px;
+  max-width: 720px;
+  color: #424242;
+  font-family: var(--font-display), serif;
+  font-size: clamp(44px, 7vw, 96px);
+  font-weight: 700;
+  line-height: 0.98;
+  letter-spacing: 0.07em;
+}
+
+.landing-frame .hero-copy--entry {
+  max-width: 360px;
+  margin: 0;
+  color: #424242;
+  font-size: clamp(16px, 1.4vw, 22px);
+  line-height: 1.42;
+}
+
+.landing-frame .hero-visual {
+  width: min(100%, 430px);
+  margin: 40px auto 24px;
+  border-radius: 0;
+  box-shadow: none;
+  overflow: visible;
+}
+
+.landing-frame .hero-visual img {
+  width: 100%;
+  height: auto;
+  filter: drop-shadow(0 34px 54px rgba(54, 46, 34, 0.16));
+}
+
+.landing-frame .cta-stack--entry {
+  width: min(100%, 360px);
+  margin-top: 4px;
+}
+
+.landing-frame .primary-button--entry {
+  min-height: 52px;
+  border: 0;
+  border-radius: 999px;
+  background: #1a1a1a;
+  color: #f8f8f8;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  box-shadow: 0 18px 40px rgba(26, 26, 26, 0.18);
+}
+
+.landing-frame .feature-section,
+.landing-frame .subscribe-section,
+.landing-frame .footer-section {
+  width: min(100%, 1260px);
+  margin-inline: auto;
+  padding-left: clamp(16px, 4vw, 72px);
+  padding-right: clamp(16px, 4vw, 72px);
+}
+
+.landing-frame .feature-section h2,
+.landing-frame .subscribe-copy h2 {
+  margin: 0 0 clamp(18px, 3vw, 30px);
+  color: #424242;
+  font-family: var(--font-display), serif;
+  font-size: clamp(24px, 3vw, 42px);
+  font-weight: 700;
+  line-height: 1.18;
+  letter-spacing: 0.07em;
+}
+
+.landing-frame .feature-section {
+  padding-top: clamp(28px, 4.5vw, 64px);
+  padding-bottom: clamp(38px, 5vw, 82px);
+}
+
+.landing-frame .feature-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 clamp(28px, 4vw, 64px);
+}
+
+.landing-frame .feature-row {
+  min-height: 88px;
+  padding: 14px 0;
+  border-bottom: 1px solid #e5dfd4;
+}
+
+.landing-frame .subscribe-section {
+  display: grid;
+  grid-template-columns: minmax(0, 0.82fr) minmax(300px, 0.58fr);
+  align-items: center;
+  gap: clamp(22px, 5vw, 76px);
+  padding-top: clamp(34px, 4vw, 56px);
+  padding-bottom: clamp(34px, 4vw, 56px);
+  background: #c4a97a;
+  color: #fff;
+}
+
+.landing-frame .subscribe-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 132px;
+  gap: 14px;
+}
+
+.landing-frame .subscribe-form input {
+  min-height: 48px;
+  border: 0;
+  border-radius: 10px;
+  background: #fff;
+  color: #1a1a1a;
+}
+
+.landing-frame .subscribe-form button {
+  min-height: 48px;
+  border: 0;
+  border-radius: 999px;
+  background: #1a1a1a;
+  color: #f5f5f5;
+}
+
+.landing-frame .footer-section {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.8fr) minmax(360px, 1fr);
+  gap: clamp(32px, 6vw, 96px);
+  padding-top: clamp(42px, 5vw, 76px);
+  padding-bottom: clamp(42px, 5vw, 76px);
+  background: #fcfcfc;
+}
+
+.landing-frame .footer-bottom {
+  grid-column: 1 / -1;
+}
+
+@media (min-width: 760px) {
+  .landing-frame .hero-section--auth-entry {
+    display: grid;
+    grid-template-columns: minmax(0, 0.94fr) minmax(330px, 0.72fr);
+    align-items: center;
+    column-gap: clamp(36px, 7vw, 104px);
+  }
+
+  .landing-frame .hero-section--auth-entry .eyebrow-pill,
+  .landing-frame .hero-section--auth-entry h1,
+  .landing-frame .hero-section--auth-entry .hero-copy,
+  .landing-frame .hero-section--auth-entry .cta-stack {
+    grid-column: 1;
+  }
+
+  .landing-frame .hero-section--auth-entry .hero-visual {
+    grid-column: 2;
+    grid-row: 1 / span 4;
+    margin: 0 auto;
+  }
+}
+
+@media (max-width: 759px) {
+  .landing-frame .top-header {
+    height: 55px;
+    padding-inline: 16px;
+  }
+
+  .landing-frame .hero-section--auth-entry {
+    padding: 26px 16px 34px;
+  }
+
+  .landing-frame .hero-section h1 {
+    max-width: 340px;
+    font-size: clamp(32px, 10vw, 48px);
+    line-height: 1.25;
+    letter-spacing: 0.08em;
+  }
+
+  .landing-frame .hero-copy--entry {
+    max-width: 230px;
+    font-size: 14px;
+    line-height: 20px;
+  }
+
+  .landing-frame .hero-visual {
+    width: min(100%, 343px);
+    margin: 40px auto 24px;
+  }
+
+  .landing-frame .cta-stack--entry {
+    width: 100%;
+  }
+
+  .landing-frame .feature-section,
+  .landing-frame .subscribe-section,
+  .landing-frame .footer-section {
+    width: 100%;
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+
+  .landing-frame .feature-list,
+  .landing-frame .subscribe-section,
+  .landing-frame .footer-section,
+  .landing-frame .subscribe-form {
+    grid-template-columns: 1fr;
+  }
+
+  .landing-frame .feature-row {
+    min-height: auto;
+  }
+
+  .landing-frame .footer-bottom {
+    grid-column: auto;
+  }
+}
+
+/* Final Figma landing section parity: feature rows + gold subscribe block. */
+.landing-frame .feature-section {
+  width: min(100%, 1260px);
+  margin: 0 auto;
+  padding: clamp(32px, 4vw, 52px) clamp(16px, 4vw, 72px);
+}
+
+.landing-frame .feature-section h2 {
+  max-width: 620px;
+  margin: 0 0 24px;
+  color: #424242;
+  font-family: var(--font-display), serif;
+  font-size: clamp(24px, 3vw, 42px);
+  font-weight: 700;
+  line-height: 1.33;
+  letter-spacing: 0.08em;
+}
+
+.landing-frame .feature-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0;
+}
+
+.landing-frame .feature-row {
+  display: flex;
+  min-height: 72px;
+  align-items: center;
+  gap: 24px;
+  padding: 8px 0;
+  border: 0;
+  border-bottom: 1px solid #e5dfd4;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.landing-frame .feature-row:last-child {
+  border-bottom: 0;
+}
+
+.landing-frame .feature-icon {
+  width: 56px;
+  height: 56px;
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  border-radius: 999px;
+  background: #fcfcfc;
+  color: #222;
+}
+
+.landing-frame .feature-icon svg {
+  width: 24px;
+  height: 24px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.landing-frame .feature-copy h3 {
+  margin: 0 0 8px;
+  color: #404040;
+  font-size: 16px;
+  line-height: 24px;
+  letter-spacing: 0.04em;
+}
+
+.landing-frame .feature-copy p {
+  margin: 0;
+  color: #666;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.landing-frame .subscribe-section {
+  width: min(100%, 1260px);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 24px;
+  padding: 36px clamp(16px, 4vw, 72px);
+  border-radius: 0;
+  background: #c4a97a;
+  color: #fff;
+}
+
+.landing-frame .subscribe-copy h2 {
+  margin: 0 0 24px;
+  color: #fff;
+  font-family: var(--font-display), serif;
+  font-size: clamp(24px, 3vw, 42px);
+  font-weight: 700;
+  line-height: 1.33;
+  letter-spacing: 0.08em;
+}
+
+.landing-frame .subscribe-copy p {
+  margin: 0;
+  color: #f8f8f8;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.landing-frame .subscribe-form {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 24px;
+  margin: 0;
+}
+
+.landing-frame .subscribe-form input {
+  width: 100%;
+  min-height: 40px;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 16px;
+  background: #fff;
+  color: #1a1a1a;
+  outline: none;
+}
+
+.landing-frame .subscribe-form input::placeholder {
+  color: #d3d3d3;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.landing-frame .subscribe-form button {
+  min-height: 48px;
+  border: 0;
+  border-radius: 999px;
+  background: #1a1a1a;
+  color: #f5f5f5;
+}
+
+@media (min-width: 760px) {
+  .landing-frame .feature-list {
+    max-width: 920px;
+  }
+
+  .landing-frame .subscribe-section {
+    grid-template-columns: minmax(0, 0.9fr) minmax(320px, 0.58fr);
+    align-items: center;
+    column-gap: clamp(32px, 6vw, 88px);
+  }
+}
+
+@media (max-width: 759px) {
+  .landing-frame .feature-section {
+    padding: 32px 16px;
+  }
+
+  .landing-frame .feature-section h2,
+  .landing-frame .subscribe-copy h2 {
+    font-size: 24px;
+    line-height: 1.33;
+  }
+
+  .landing-frame .feature-row {
+    min-height: auto;
+  }
+
+  .landing-frame .subscribe-section {
+    width: 100%;
+    padding: 36px 16px;
+  }
+}
+
+/* Figma exact landing overrides for How ORIN works and Subscribe. */
+.landing-frame .feature-section {
+  padding-top: 32px;
+  padding-bottom: 32px;
+}
+
+.landing-frame .feature-section h2 {
+  margin: 0 0 24px;
+  font-family: var(--font-display), serif;
+  font-weight: 700;
+  font-size: 24px;
+  line-height: 1.33;
+  letter-spacing: 0.08em;
+  color: #424242;
+}
+
+.landing-frame .feature-list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0;
+}
+
+.landing-frame .feature-row {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  min-height: 0;
+  padding: 8px 0;
+  border: 0;
+  border-bottom: 1px solid #e5dfd4;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.landing-frame .feature-row:last-child {
+  border-bottom: 0;
+}
+
+.landing-frame .feature-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 999px;
+  background: #fcfcfc;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  color: #222;
+}
+
+.landing-frame .feature-icon svg {
+  width: 24px;
+  height: 24px;
+  stroke: #222;
+  fill: none;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.landing-frame .feature-copy h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  line-height: 24px;
+  letter-spacing: 0.04em;
+  color: #404040;
+}
+
+.landing-frame .feature-copy p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: #666666;
+}
+
+.landing-frame .subscribe-section {
+  background: #c4a97a;
+  color: white;
+  padding-top: 36px;
+  padding-bottom: 36px;
+  border-radius: 0;
+}
+
+.landing-frame .subscribe-copy h2 {
+  margin: 0 0 24px;
+  font-family: var(--font-display), serif;
+  font-weight: 700;
+  font-size: 24px;
+  line-height: 1.33;
+  letter-spacing: 0.08em;
+  color: #ffffff;
+}
+
+.landing-frame .subscribe-copy p {
+  margin: 0;
+  color: #f8f8f8;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.landing-frame .subscribe-form {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 24px;
+}
+
+.landing-frame .subscribe-form input {
+  width: 100%;
+  min-height: 40px;
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 16px;
+  background: white;
+  color: #1a1a1a;
+  outline: none;
+}
+
+.landing-frame .subscribe-form input::placeholder {
+  color: #d3d3d3;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.landing-frame .subscribe-form button {
+  border: 0;
+  border-radius: 999px;
+  background: #1a1a1a;
+  color: #f5f5f5;
+}
+
+/* Landing footer: Figma desktop uses horizontal PRODUCT / COMPANY / RESOURCE columns. */
+.landing-frame .footer-columns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(140px, 1fr));
+  align-items: start;
+  gap: clamp(32px, 5vw, 72px);
+}
+
+.landing-frame .footer-columns h3 {
+  margin: 0 0 16px;
+  color: #000;
+  font-size: 14px;
+  line-height: 24px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.landing-frame .footer-link {
+  display: block;
+  margin-bottom: 18px;
+  color: #8c8c8c;
+  font-size: 14px;
+  line-height: 20px;
+}
+
+.landing-frame .footer-link:last-child {
+  margin-bottom: 0;
+}
+
+@media (max-width: 759px) {
+  .landing-frame .footer-columns {
+    grid-template-columns: 1fr;
+    gap: 32px;
   }
 }
