@@ -668,13 +668,12 @@ export default function Frontend2App() {
 }
 
 function Landing({ ready, onLogin }: { ready: boolean; onLogin: () => void }) {
-
   const features = [
-    { title: "AI Concierge", description: "Talk and type naturally while ORIN understands the full stay context.", icon: Mic },
-    { title: "Room Control", description: "Lighting, temperature, and music handled instantly and quietly.", icon: Zap },
-    { title: "Personalized Experience", description: "Your preferences follow you across every ORIN-powered hotel.", icon: UserRound },
-    { title: "Instant Booking", description: "Find and confirm stays that match your exact style in seconds.", icon: BedDouble },
-    { title: "24/7 Customer Support", description: "Immediate assistance at any hour, directly inside the assistant.", icon: MessageCircle },
+    { title: "AI Concierge", description: "Talk and type naturally and ORIN understands context", icon: <LandingMicIcon /> },
+    { title: "Room Control", description: "Lighting, temperature and music handled for you instantly, seamlessly, quietly.", icon: <LandingSettingsIcon /> },
+    { title: "Personalized Experience", description: "Your preferences follow you everywhere. Every session builds a richer picture of what you love", icon: <LandingUserIcon /> },
+    { title: "Instant Booking", description: "Find and secure stays that match your exact style curated by ORIN, confirmed in seconds.", icon: <LandingMapIcon /> },
+    { title: "24/7 Customer Support", description: "Immediate assistance at any hour", icon: <LandingChatIcon /> },
   ];
 
   const footerColumns = [
@@ -697,16 +696,15 @@ function Landing({ ready, onLogin }: { ready: boolean; onLogin: () => void }) {
           <div className="hero-visual"><img src="/images/hero-phone.png" alt="ORIN app preview" /></div>
           <div className="cta-stack cta-stack--entry">
             <button className="primary-button primary-button--entry" onClick={onLogin} disabled={!ready} type="button">{ready ? "Sign In to ORIN" : "Loading Privy..."}</button>
-            <p className="landing-auth-note">Continue with wallet, email, or X.</p>
           </div>
         </section>
 
         <section className="feature-section">
-          <h2>How ORIN makes every stay feel like yours</h2>
+          <h2>How ORIN works</h2>
           <div className="feature-list">
             {features.map((feature) => (
               <article className="feature-row" key={feature.title}>
-                <div className="feature-icon"><feature.icon size={20} /></div>
+                <div className="feature-icon">{feature.icon}</div>
                 <div className="feature-copy">
                   <h3>{feature.title}</h3>
                   <p>{feature.description}</p>
@@ -718,7 +716,7 @@ function Landing({ ready, onLogin }: { ready: boolean; onLogin: () => void }) {
         <section className="subscribe-section">
           <div className="subscribe-copy">
             <h2>Subscribe to updates</h2>
-            <p>Get early access updates and new feature releases.</p>
+            <p>Get early access updates &amp; New features</p>
           </div>
           <form className="subscribe-form" onSubmit={(event) => event.preventDefault()}>
             <input type="email" placeholder="Enter your email" aria-label="Email" />
@@ -787,6 +785,60 @@ function InstagramIcon() {
       <rect x="5" y="5" width="14" height="14" rx="4" />
       <circle cx="12" cy="12" r="3.2" />
       <path d="M16.6 7.7H16.7" />
+    </svg>
+  );
+}
+
+function LandingMicIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="9" y="3" width="6" height="10" rx="3" />
+      <path d="M6.5 11.5C6.5 14.54 8.96 17 12 17C15.04 17 17.5 14.54 17.5 11.5" />
+      <path d="M12 17V21" />
+    </svg>
+  );
+}
+
+function LandingSettingsIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 3.5V6.5" />
+      <path d="M12 17.5V20.5" />
+      <path d="M4.93 6.93L7.05 9.05" />
+      <path d="M16.95 18.95L19.07 21.07" />
+      <path d="M3.5 12H6.5" />
+      <path d="M17.5 12H20.5" />
+      <path d="M4.93 17.07L7.05 14.95" />
+      <path d="M16.95 5.05L19.07 2.93" />
+      <circle cx="12" cy="12" r="3.5" />
+    </svg>
+  );
+}
+
+function LandingUserIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="8" r="3.5" />
+      <path d="M5 19C6.7 16.67 9.1 15.5 12 15.5C14.9 15.5 17.3 16.67 19 19" />
+    </svg>
+  );
+}
+
+function LandingMapIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M4.5 6.5L9.5 4.5L14.5 6.5L19.5 4.5V17.5L14.5 19.5L9.5 17.5L4.5 19.5V6.5Z" />
+      <path d="M9.5 4.5V17.5" />
+      <path d="M14.5 6.5V19.5" />
+    </svg>
+  );
+}
+
+function LandingChatIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M6 6.5H18V15.5H10L6 18V6.5Z" />
+      <path d="M9 10.5H15" />
     </svg>
   );
 }
