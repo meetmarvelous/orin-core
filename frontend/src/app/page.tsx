@@ -1178,8 +1178,7 @@ function Landing({ ready, onLogin }: { ready: boolean; onLogin: () => void }) {
         </header>
         <section className="hero-section hero-section--auth-entry">
           <div className="eyebrow-pill">AI-powered stays, personalized for you</div>
-          <h1>Your Personal AI Concierge</h1>
-          <p className="hero-copy hero-copy--entry">Every hotel already knows you.</p>
+          <h1>ORIN AI Agent That Books & Personalises Your Hotel Stay</h1>
           <div className="hero-visual"><img src="/images/hero-phone.png" alt="ORIN app preview" /></div>
           <div className="cta-stack cta-stack--entry">
             <button className="primary-button primary-button--entry" onClick={onLogin} disabled={ready === false} type="button">{ready ? "Sign In to ORIN" : "Enter ORIN..."}</button>
